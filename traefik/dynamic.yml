@@ -1,0 +1,37 @@
+# Dynamic configuration
+
+tls:
+  certificates:
+    - certFile: /run/secrets/cloudflare.crt
+      keyFile: /run/secrets/cloudflare.key
+
+  # stores:
+  #   default:
+  #     defaultCertificate:
+  #       certFile: /run/secrets/cloudflare.crt
+  #       keyFile: /run/secrets/cloudflare.key
+
+# Metrics access control middlewares
+http:
+  middlewares:
+    # Basic authentication for metrics endpoints
+    monitoring-metrics-auth:
+      basicAuth:
+        usersFile: /run/secrets/metrics.htpasswd
+        removeHeader: true
+        realm: "Metrics Authentication Required"
+
+    # IP whitelisting for monitoring access
+    monitoring-metrics-ip-whitelist:
+      ipAllowList:
+        sourceRange:
+          - {{ env "METRICS_IP_WHITELIST" }}
+        ipStrategy:
+          depth: 1
+
+    # Combined metrics access control (auth + IP whitelist)
+    monitoring-metrics-access-control:
+      chain:
+        middlewares:
+          - monitoring-metrics-ip-whitelist
+          - monitoring-metrics-auth
