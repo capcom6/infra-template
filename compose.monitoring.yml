@@ -1,0 +1,209 @@
+services:
+  prometheus:
+    image: prom/prometheus:v3.7.3
+    volumes:
+      - prometheus_data:/prometheus
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    configs:
+      - source: prometheus.yml
+        target: /etc/prometheus/prometheus.yml
+      - source: alert.rules.yml
+        target: /etc/prometheus/alert.rules.yml
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    user: root
+    networks:
+      - internal
+      - public
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://localhost:9090/-/healthy",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      placement:
+        constraints:
+          - node.role==manager
+      resources:
+        limits:
+          memory: 256M
+      restart_policy:
+        condition: any
+      labels:
+        - "traefik.enable=true"
+        - "traefik.swarm.network=public"
+        - "traefik.http.routers.prometheus.rule=Host(`prometheus.${ROOT_DOMAIN}`)"
+        - "traefik.http.routers.prometheus.entrypoints=https"
+        - "traefik.http.routers.prometheus.tls.certresolver=le"
+        - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
+        - "traefik.http.middlewares.prometheus-ipallowlist.ipallowlist.ipStrategy.depth=1"
+        - "traefik.http.middlewares.prometheus-ipallowlist.ipallowlist.sourcerange=${PROMETHEUS__IP_ALLOWLIST}"
+        - "traefik.http.routers.prometheus.middlewares=prometheus-ipallowlist"
+
+  alertmanager:
+    image: prom/alertmanager:v0.29.0
+    volumes:
+      - alertmanager_data:/alertmanager
+    configs:
+      - source: alertmanager.yml
+        target: /etc/alertmanager/alertmanager.yml
+    secrets:
+      - telegram_bot_token
+      - email_password
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    networks:
+      - internal
+      - public
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://localhost:9093/-/healthy",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      placement:
+        constraints:
+          - node.role==manager
+      resources:
+        limits:
+          memory: 128M
+      restart_policy:
+        condition: any
+      labels:
+        - "traefik.enable=true"
+        - "traefik.swarm.network=public"
+        - "traefik.http.routers.alertmanager.rule=Host(`alerts.${ROOT_DOMAIN}`)"
+        - "traefik.http.routers.alertmanager.entrypoints=https"
+        - "traefik.http.routers.alertmanager.tls.certresolver=le"
+        - "traefik.http.services.alertmanager.loadbalancer.server.port=9093"
+        - "traefik.http.middlewares.alertmanager-ipallowlist.ipallowlist.ipStrategy.depth=1"
+        - "traefik.http.middlewares.alertmanager-ipallowlist.ipallowlist.sourcerange=${ALERTMANAGER__IP_ALLOWLIST}"
+        - "traefik.http.routers.alertmanager.middlewares=alertmanager-ipallowlist"
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.52.0
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - internal
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://localhost:8080/",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      mode: global
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+      restart_policy:
+        condition: any
+      labels:
+        - "prometheus.io/scrape=true"
+        - "prometheus.io/port=8080"
+        - "prometheus.io/job=cadvisor"
+
+  grafana:
+    image: grafana/grafana:12.2.1
+    depends_on:
+      - prometheus
+    volumes:
+      - grafana_data:/var/lib/grafana
+      # - ./grafana/provisioning/:/etc/grafana/provisioning/
+    # env_file:
+    # - ./grafana/config.monitoring
+    networks:
+      - internal
+      - public
+    user: "472"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3000/api/health",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      placement:
+        constraints:
+          - node.role==manager
+      resources:
+        limits:
+          memory: 512M
+      labels:
+        - "traefik.enable=true"
+        - "traefik.swarm.network=public"
+        - "traefik.http.routers.grafana.rule=Host(`mon.${ROOT_DOMAIN}`)"
+        - "traefik.http.routers.grafana.entrypoints=https"
+        - "traefik.http.routers.grafana.tls.certresolver=le"
+        - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+      restart_policy:
+        condition: any
+
+volumes:
+  prometheus_data: {}
+  alertmanager_data: {}
+  grafana_data: {}
+
+networks:
+  public:
+    external: true
+  internal:
+    external: true
+
+configs:
+  prometheus.yml:
+    name: prometheus.yml_${STACK_VERSION:-0}
+    file: prometheus/prometheus.yml
+  alertmanager.yml:
+    name: alertmanager.yml_${STACK_VERSION:-0}
+    file: prometheus/alertmanager.yml
+  alert.rules.yml:
+    name: alert.rules.yml_${STACK_VERSION:-0}
+    file: prometheus/alert.rules.yml
+
+secrets:
+  telegram_bot_token:
+    name: telegram_bot_token
+    external: true
+  email_password:
+    name: email_password
+    external: true
