@@ -1,0 +1,58 @@
+groups:
+  - name: example-alerts
+    rules:
+      - alert: InstanceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Instance {{ $labels.instance }} down"
+          description: "{{ $labels.instance }} of job {{ $labels.job }} has been down for more than 1 minute."
+
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage on {{ $labels.instance }} has been above 80% for more than 2 minutes."
+
+  - name: cadvisor
+    rules:
+      - alert: ContainerHighCPUUsage
+        expr: avg by(container) (rate(container_cpu_usage_seconds_total[5m])) * 100 > 80
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage in container {{ $labels.container }} on {{ $labels.instance }}"
+          description: "CPU usage in container {{ $labels.container }} on {{ $labels.instance }} has been above 80% for more than 2 minutes."
+
+      - alert: ContainerHighMemoryUsage
+        expr: avg by(container) (container_memory_working_set_bytes) / 1024 / 1024 > 100
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage in container {{ $labels.container }} on {{ $labels.instance }}"
+          description: "Memory usage in container {{ $labels.container }} on {{ $labels.instance }} has been above 100MB for more than 2 minutes."
+
+      - alert: ContainerHighDiskUsage
+        expr: avg by(container) (container_fs_usage_bytes) / 1024 / 1024 > 100
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High disk usage in container {{ $labels.container }} on {{ $labels.instance }}"
+          description: "Disk usage in container {{ $labels.container }} on {{ $labels.instance }} has been above 100MB for more than 2 minutes."
+
+      - alert: ContainerHighNetworkUsage
+        expr: avg by(container) (container_network_receive_bytes) / 1024 / 1024 > 100
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High network usage in container {{ $labels.container }} on {{ $labels.instance }}"
+          description: "Network usage in container {{ $labels.container }} on {{ $labels.instance }} has been above 100MB for more than 2 minutes."
