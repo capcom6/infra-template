@@ -1,12 +1,12 @@
 services:
-  redis:
-    image: redis:7
+  valkey:
+    image: valkey/valkey:latest
     environment:
       - "TZ=${TIMEZONE:-UTC}"
     volumes:
-      - redis-data:/data
+      - valkey-data:/data
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      test: ["CMD-SHELL", "valkey-cli ping | grep PONG"]
       interval: 1s
       timeout: 3s
       retries: 5
@@ -20,6 +20,37 @@ services:
           memory: 16M
         limits:
           memory: 128M
+      placement:
+        constraints:
+          - node.role == manager
+
+  redis-commander:
+    image: ghcr.io/joeferner/redis-commander:latest
+    environment:
+      - REDIS_HOSTS=local:valkey:6379
+    user: redis
+    networks:
+      - internal
+      - public
+    depends_on:
+      - valkey
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.swarm.network=public"
+        - "traefik.http.middlewares.redis-commander-auth.basicauth.usersfile=/run/secrets/users.htpasswd"
+        - "traefik.http.routers.redis-commander.rule=Host(`redis.${ROOT_DOMAIN}`)"
+        - "traefik.http.routers.redis-commander.entrypoints=https"
+        - "traefik.http.routers.redis-commander.tls=true"
+        - "traefik.http.routers.redis-commander.tls.certresolver=le"
+        - "traefik.http.routers.redis-commander.middlewares=redis-commander-auth"
+        - "traefik.http.services.redis-commander.loadbalancer.server.port=8081"
+      replicas: 1
+      resources:
+        reservations:
+          memory: 32M
+        limits:
+          memory: 64M
       placement:
         constraints:
           - node.role == manager
@@ -138,6 +169,7 @@ services:
       - cloudflare.crt
       - cloudflare.key
       - metrics.htpasswd
+      - users.htpasswd
     environment:
       - "TZ=${TIMEZONE:-UTC}"
       - "METRICS_IP_WHITELIST=${TRAEFIK__METRICS_IP_WHITELIST}"
@@ -186,7 +218,7 @@ services:
           - node.role == manager
 
 volumes:
-  redis-data:
+  valkey-data:
   mariadb-data:
   letsencrypt:
 
@@ -210,6 +242,9 @@ secrets:
     external: true
   metrics.htpasswd:
     name: metrics.htpasswd
+    external: true
+  users.htpasswd:
+    name: users.htpasswd
     external: true
 
 networks:
