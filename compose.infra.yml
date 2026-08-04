@@ -1,10 +1,11 @@
 services:
-  valkey:
-    image: valkey/valkey:latest
+  redis:
+    image: valkey/valkey:9
+    command: valkey-server --maxmemory 96M --maxmemory-policy allkeys-lru --appendonly yes
     environment:
       - "TZ=${TIMEZONE:-UTC}"
     volumes:
-      - valkey-data:/data
+      - redis-data:/data
     healthcheck:
       test: ["CMD-SHELL", "valkey-cli ping | grep PONG"]
       interval: 1s
@@ -22,18 +23,18 @@ services:
           memory: 128M
       placement:
         constraints:
-          - node.role == manager
+          - node.labels.redis == true
 
   redis-commander:
     image: ghcr.io/joeferner/redis-commander:latest
     environment:
-      - REDIS_HOSTS=local:valkey:6379
+      - REDIS_HOSTS=local:redis:6379
     user: redis
     networks:
       - internal
       - public
     depends_on:
-      - valkey
+      - redis
     deploy:
       labels:
         - "traefik.enable=true"
@@ -51,9 +52,6 @@ services:
           memory: 32M
         limits:
           memory: 64M
-      placement:
-        constraints:
-          - node.role == manager
 
   db:
     image: mariadb:lts
@@ -89,7 +87,7 @@ services:
           memory: 512M
       placement:
         constraints:
-          - node.role == manager
+          - node.labels.db == true
 
   db-backup:
     image: ghcr.io/capcom6/mariadb-backup-s3:latest
@@ -123,13 +121,15 @@ services:
           memory: 256M
       placement:
         constraints:
-          - node.role == manager
+          - node.labels.db == true
 
   db-admin:
-    image: bitnami/phpmyadmin:5
+    image: phpmyadmin:5
     environment:
       - "TZ=${TIMEZONE:-UTC}"
-      - DATABASE_HOST=db
+      - APACHE_PORT=8080
+      - PMA_HOST=db
+      - PMA_SSL=0
     networks:
       - public
       - internal
@@ -139,7 +139,7 @@ services:
         - "traefik.swarm.network=public"
         - "traefik.http.routers.db-admin.rule=Host(`pma.${ROOT_DOMAIN}`)"
         - "traefik.http.routers.db-admin.entrypoints=https"
-        - "traefik.http.routers.db-admin.tls=true"
+        - "traefik.http.routers.db-admin.tls.certresolver=le"
         - "traefik.http.routers.db-admin.middlewares=db-admin-auth"
         - "traefik.http.middlewares.db-admin-auth.basicauth.users=${DB_ADMIN_AUTH}"
         - "traefik.http.services.db-admin.loadbalancer.server.port=8080"
@@ -197,6 +197,7 @@ services:
       placement:
         constraints:
           - node.role == manager
+          - node.labels.traefik == true
 
   cronjob:
     image: ghcr.io/crazy-max/swarm-cronjob:latest
@@ -216,9 +217,10 @@ services:
       placement:
         constraints:
           - node.role == manager
+          - node.labels.cronjob == true
 
 volumes:
-  valkey-data:
+  redis-data:
   mariadb-data:
   letsencrypt:
 

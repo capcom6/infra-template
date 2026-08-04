@@ -1,15 +1,15 @@
 # Dynamic configuration
 
-tls:
-  certificates:
-    - certFile: /run/secrets/cloudflare.crt
-      keyFile: /run/secrets/cloudflare.key
+# tls: {}
+# certificates:
+#   - certFile: /run/secrets/cloudflare.crt
+#     keyFile: /run/secrets/cloudflare.key
 
-  # stores:
-  #   default:
-  #     defaultCertificate:
-  #       certFile: /run/secrets/cloudflare.crt
-  #       keyFile: /run/secrets/cloudflare.key
+# stores:
+#   default:
+#     defaultCertificate:
+#       certFile: /run/secrets/cloudflare.crt
+#       keyFile: /run/secrets/cloudflare.key
 
 # Metrics access control middlewares
 http:
@@ -25,7 +25,9 @@ http:
     monitoring-metrics-ip-whitelist:
       ipAllowList:
         sourceRange:
-          - {{ env "METRICS_IP_WHITELIST" }}
+          {{ range (splitList "," (default "127.0.0.1/32" (trimSpace (env "METRICS_IP_WHITELIST")))) -}}
+          - {{ . | trimSpace }}
+          {{ end -}}
         ipStrategy:
           depth: 1
 

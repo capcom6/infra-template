@@ -38,8 +38,12 @@ entryPoints:
         - 131.0.72.0/22
     transport:
       respondingTimeouts:
-        writeTimeout: 60s
+        writeTimeout: 0s # disable to keep long-lived SSE connections open
         readTimeout: 60s
+        idleTimeout: 3600s # for SSE
+    http:
+      tls:
+        certResolver: le
 
 certificatesResolvers:
   le:
@@ -62,6 +66,15 @@ certificatesResolvers:
       # Optional (but recommended)
       #
       tlsChallenge: {}
+  cloudflare:
+    acme:
+      email: "admin@sms-gate.app"
+      storage: "/letsencrypt/cloudflare.json"
+      dnsChallenge:
+        provider: cloudflare
+        resolvers:
+          - "1.1.1.1:53"
+          - "8.8.8.8:53"
 
 # API and dashboard configuration
 api:
