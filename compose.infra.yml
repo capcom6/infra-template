@@ -166,8 +166,6 @@ services:
         protocol: tcp
         mode: host
     secrets:
-      - cloudflare.crt
-      - cloudflare.key
       - metrics.htpasswd
       - users.htpasswd
     environment:
@@ -235,12 +233,6 @@ configs:
 secrets:
   mariadb_root_password:
     name: mariadb_root_password
-    external: true
-  cloudflare.crt:
-    name: cloudflare.crt
-    external: true
-  cloudflare.key:
-    name: cloudflare.key
     external: true
   metrics.htpasswd:
     name: metrics.htpasswd
