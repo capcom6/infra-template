@@ -20,7 +20,7 @@ services:
         reservations:
           memory: 16M
         limits:
-          memory: 128M
+          memory: 256M
       placement:
         constraints:
           - node.labels.redis == true
@@ -171,6 +171,7 @@ services:
     environment:
       - "TZ=${TIMEZONE:-UTC}"
       - "METRICS_IP_WHITELIST=${TRAEFIK__METRICS_IP_WHITELIST}"
+      - "CF_DNS_API_TOKEN=${TRAEFIK__CF_DNS_API_TOKEN}"
     volumes:
       - "letsencrypt:/letsencrypt"
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
@@ -178,6 +179,9 @@ services:
       - public
     deploy:
       labels:
+        - "prometheus.io/scrape=true"
+        - "prometheus.io/port=8080"
+        - "prometheus.io/job=traefik"
         - "traefik.enable=true"
         - "traefik.http.middlewares.dashboard-auth.basicauth.users=${DASHBOARD_AUTH}"
         - "traefik.http.routers.dashboard.rule=Host(`admin.${ROOT_DOMAIN}`)"
