@@ -166,12 +166,13 @@ services:
         protocol: tcp
         mode: host
     secrets:
+      - cloudflare.token
       - metrics.htpasswd
       - users.htpasswd
     environment:
       - "TZ=${TIMEZONE:-UTC}"
       - "METRICS_IP_WHITELIST=${TRAEFIK__METRICS_IP_WHITELIST}"
-      - "CF_DNS_API_TOKEN=${TRAEFIK__CF_DNS_API_TOKEN}"
+      - "CF_DNS_API_TOKEN_FILE=/run/secrets/cloudflare.token"
     volumes:
       - "letsencrypt:/letsencrypt"
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
@@ -237,6 +238,9 @@ configs:
 secrets:
   mariadb_root_password:
     name: mariadb_root_password
+    external: true
+  cloudflare.token:
+    name: cloudflare.token
     external: true
   metrics.htpasswd:
     name: metrics.htpasswd
