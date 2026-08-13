@@ -43,7 +43,7 @@ services:
         - "traefik.http.routers.redis-commander.rule=Host(`redis.${ROOT_DOMAIN}`)"
         - "traefik.http.routers.redis-commander.entrypoints=https"
         - "traefik.http.routers.redis-commander.tls=true"
-        - "traefik.http.routers.redis-commander.tls.certresolver=le"
+        - "traefik.http.routers.redis-commander.tls.certresolver=cloudflare"
         - "traefik.http.routers.redis-commander.middlewares=redis-commander-auth"
         - "traefik.http.services.redis-commander.loadbalancer.server.port=8081"
       replicas: 1
@@ -139,7 +139,7 @@ services:
         - "traefik.swarm.network=public"
         - "traefik.http.routers.db-admin.rule=Host(`pma.${ROOT_DOMAIN}`)"
         - "traefik.http.routers.db-admin.entrypoints=https"
-        - "traefik.http.routers.db-admin.tls.certresolver=le"
+        - "traefik.http.routers.db-admin.tls.certresolver=cloudflare"
         - "traefik.http.routers.db-admin.middlewares=db-admin-auth"
         - "traefik.http.middlewares.db-admin-auth.basicauth.users=${DB_ADMIN_AUTH}"
         - "traefik.http.services.db-admin.loadbalancer.server.port=8080"
@@ -167,7 +167,6 @@ services:
         mode: host
     secrets:
       - cloudflare.token
-      - metrics.htpasswd
       - users.htpasswd
     environment:
       - "TZ=${TIMEZONE:-UTC}"
@@ -187,16 +186,16 @@ services:
         - "traefik.http.middlewares.dashboard-auth.basicauth.users=${DASHBOARD_AUTH}"
         - "traefik.http.routers.dashboard.rule=Host(`admin.${ROOT_DOMAIN}`)"
         - "traefik.http.routers.dashboard.entrypoints=https"
-        - "traefik.http.routers.dashboard.tls.certresolver=le"
+        - "traefik.http.routers.dashboard.tls.certresolver=cloudflare"
         - "traefik.http.routers.dashboard.service=api@internal"
         - "traefik.http.routers.dashboard.middlewares=dashboard-auth"
         - "traefik.http.services.dashboard.loadbalancer.server.port=8080"
       replicas: 1
       resources:
         reservations:
-          memory: 32M
-        limits:
           memory: 64M
+        limits:
+          memory: 256M
       placement:
         constraints:
           - node.role == manager
@@ -241,9 +240,6 @@ secrets:
     external: true
   cloudflare.token:
     name: cloudflare.token
-    external: true
-  metrics.htpasswd:
-    name: metrics.htpasswd
     external: true
   users.htpasswd:
     name: users.htpasswd

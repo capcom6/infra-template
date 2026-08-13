@@ -45,7 +45,7 @@ Every service behind Traefik is exposed over HTTPS with automatic certificates, 
 
 ## Features
 
-- **Traefik v3 reverse proxy** with HTTP to HTTPS redirect, automatic Let's Encrypt certificates (TLS-ALPN-01 and Cloudflare DNS challenge resolvers), JSON access logs, and a dashboard behind basic auth.
+- **Traefik v3 reverse proxy** with HTTP to HTTPS redirect, automatic Let's Encrypt certificates (TLS-ALPN-01 and Cloudflare DNS challenge resolvers; the Cloudflare API token is provided via the `cloudflare.token` Docker secret), JSON access logs, and a dashboard behind basic auth.
 - **Valkey 9** (Redis-compatible) cache with LRU eviction and AOF persistence, plus a **Redis Commander** web UI behind basic auth.
 - **MariaDB LTS** database with a healthcheck, and **phpMyAdmin** behind basic auth.
 - **Scheduled MariaDB backups to S3** via `mariadb-backup-s3`, driven by `swarm-cronjob` with a configurable cron schedule.
@@ -101,12 +101,12 @@ printf 'change-me-grafana-admin-password' | docker secret create grafana_admin_p
 
 The remaining secrets are files:
 
-- `users.htpasswd` - basic-auth file used by Redis Commander (htpasswd format, the same format shown in `DB_ADMIN_AUTH` in `.env.example`).
-- `metrics.htpasswd` - basic-auth file used for Prometheus/Alertmanager metrics endpoints.
+- `users.htpasswd` - basic-auth file used by Redis Commander and the Traefik metrics endpoints. Generate it with `htpasswd -B -c users.htpasswd <user>` (repeat without `-c` to add more users); entries are `name:hashed-password` with single dollar signs, e.g. `admin:$2y$05$...`. Doubled dollars (`$$`) are only needed when an htpasswd entry is placed inline in a Compose label, as in `DB_ADMIN_AUTH` in `.env.example`.
+- `cloudflare.token` - Cloudflare API token used by Traefik for DNS challenge certificate issuance. The token needs `Zone / Zone / Read` and `Zone / DNS / Edit` permissions, scoped to the target zone.
 
 ```bash
 docker secret create users.htpasswd ./users.htpasswd
-docker secret create metrics.htpasswd ./metrics.htpasswd
+docker secret create cloudflare.token ./cloudflare.token
 ```
 
 ### 5. Deploy the stacks
@@ -204,8 +204,8 @@ These variables are carried in `.env.example` for the application stacks you dep
 | `telegram_bot_token`     | Alertmanager    | Telegram bot token for critical alerts                        |
 | `email_password`         | Alertmanager    | SMTP password for email alerts                                |
 | `grafana_admin_password` | Grafana         | Admin password (via `GF_SECURITY_ADMIN_PASSWORD__FILE`)       |
-| `users.htpasswd`         | Redis Commander | Basic-auth users file                                         |
-| `metrics.htpasswd`       | Traefik         | Basic-auth users file for metrics endpoints                   |
+| `users.htpasswd`         | Redis Commander, Traefik | Basic-auth users file for the Redis Commander UI and metrics endpoints |
+| `cloudflare.token`       | Traefik         | Cloudflare API token with DNS edit permissions (via `CF_DNS_API_TOKEN_FILE`) |
 
 ### Node labels
 

@@ -1,6 +1,9 @@
 global:
   resolve_timeout: 5m
 
+templates:
+  - "/etc/alertmanager/telegram.tmpl"
+
 route:
   group_by: ["alertname"]
   group_wait: 10s
@@ -25,6 +28,8 @@ receivers:
       - bot_token_file: /run/secrets/telegram_bot_token
         chat_id: -100123456789
         send_resolved: true
+        parse_mode: HTML
+        message: '{{ template "telegram.default.message" . }}'
   - name: "email"
     email_configs:
       - from: "alerts@example.com"

@@ -12,6 +12,7 @@ services:
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
+      - "--web.external-url=https://prometheus.${ROOT_DOMAIN}"
       - "--web.console.libraries=/usr/share/prometheus/console_libraries"
       - "--web.console.templates=/usr/share/prometheus/consoles"
     networks:
@@ -50,10 +51,10 @@ services:
         - "traefik.swarm.network=public"
         - "traefik.http.routers.prometheus.rule=Host(`prometheus.${ROOT_DOMAIN}`)"
         - "traefik.http.routers.prometheus.entrypoints=https"
-        - "traefik.http.routers.prometheus.tls.certresolver=le"
+        - "traefik.http.routers.prometheus.tls.certresolver=cloudflare"
         - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
         - "traefik.http.middlewares.prometheus-ipallowlist.ipallowlist.ipStrategy.depth=0"
-        - "traefik.http.middlewares.prometheus-ipallowlist.ipallowlist.sourcerange=${PROMETHEUS__IP_ALLOWLIST:-127.0.0.1/32}"
+        - "traefik.http.middlewares.prometheus-ipallowlist.ipallowlist.sourcerange=${PROMETHEUS__IP_ALLOWLIST}"
         - "traefik.http.routers.prometheus.middlewares=prometheus-ipallowlist"
 
   alertmanager:
@@ -63,12 +64,15 @@ services:
     configs:
       - source: alertmanager.yml
         target: /etc/alertmanager/alertmanager.yml
+      - source: telegram.tmpl
+        target: /etc/alertmanager/telegram.tmpl
     secrets:
       - telegram_bot_token
       - email_password
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
       - "--storage.path=/alertmanager"
+      - "--web.external-url=https://alerts.${ROOT_DOMAIN}"
     networks:
       - internal
       - public
@@ -103,11 +107,14 @@ services:
         - "traefik.swarm.network=public"
         - "traefik.http.routers.alertmanager.rule=Host(`alerts.${ROOT_DOMAIN}`)"
         - "traefik.http.routers.alertmanager.entrypoints=https"
-        - "traefik.http.routers.alertmanager.tls.certresolver=le"
+        - "traefik.http.routers.alertmanager.tls.certresolver=cloudflare"
         - "traefik.http.services.alertmanager.loadbalancer.server.port=9093"
         - "traefik.http.middlewares.alertmanager-ipallowlist.ipallowlist.ipStrategy.depth=0"
-        - "traefik.http.middlewares.alertmanager-ipallowlist.ipallowlist.sourcerange=${ALERTMANAGER__IP_ALLOWLIST:-127.0.0.1/32}"
+        - "traefik.http.middlewares.alertmanager-ipallowlist.ipallowlist.sourcerange=${ALERTMANAGER__IP_ALLOWLIST}"
         - "traefik.http.routers.alertmanager.middlewares=alertmanager-ipallowlist"
+        - "prometheus.io/scrape=true"
+        - "prometheus.io/port=9093"
+        - "prometheus.io/job=alertmanager"
 
   cadvisor:
     image: ghcr.io/google/cadvisor:0.60
@@ -189,7 +196,7 @@ services:
         - "traefik.swarm.network=public"
         - "traefik.http.routers.grafana.rule=Host(`mon.${ROOT_DOMAIN}`)"
         - "traefik.http.routers.grafana.entrypoints=https"
-        - "traefik.http.routers.grafana.tls.certresolver=le"
+        - "traefik.http.routers.grafana.tls.certresolver=cloudflare"
         - "traefik.http.services.grafana.loadbalancer.server.port=3000"
       restart_policy:
         condition: any
@@ -219,6 +226,9 @@ configs:
   alertmanager.yml:
     name: alertmanager.yml_${STACK_VERSION:-0}
     file: prometheus/alertmanager.yml
+  telegram.tmpl:
+    name: telegram.tmpl_${STACK_VERSION:-0}
+    file: prometheus/templates/telegram.tmpl
   alert.rules.yml:
     name: alert.rules.yml_${STACK_VERSION:-0}
     file: prometheus/alert.rules.yml

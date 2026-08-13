@@ -6,7 +6,7 @@ http:
     # Basic authentication for metrics endpoints
     monitoring-metrics-auth:
       basicAuth:
-        usersFile: /run/secrets/metrics.htpasswd
+        usersFile: /run/secrets/users.htpasswd
         removeHeader: true
         realm: "Metrics Authentication Required"
 
