@@ -1,0 +1,49 @@
+{{- /*
+Telegram notification template for Alertmanager.
+Rendered with parse_mode: HTML. All dynamic values are HTML-escaped.
+*/ -}}
+
+{{- define "telegram.default.message" -}}
+{{- $sevMap := dict "critical" "🔴" "warning" "🟠" "info" "🔵" -}}
+{{- range $i, $alert := .Alerts -}}
+{{- $sev := index $alert.Labels "severity" -}}
+{{- if eq $sev "" }}{{ $sev = "info" }}{{ end -}}
+{{- $emoji := index $sevMap $sev -}}
+{{- $state := "FIRING" -}}
+{{- if eq $alert.Status "resolved" }}{{ $emoji = "🟢" }}{{ $state = "RESOLVED" }}{{ end -}}
+{{- if gt $i 0 }}
+
+────────────
+
+{{ end -}}
+{{ $emoji }} <b>{{ $state }}: {{ $alert.Labels.alertname | html }}</b>
+{{- if ne (index $alert.Annotations "summary") "" }}
+
+<b>summary:</b> {{ index $alert.Annotations "summary" | html }}
+{{- end -}}
+{{- if ne (index $alert.Annotations "description") "" }}
+<b>description:</b> {{ index $alert.Annotations "description" | html }}
+{{- end -}}
+{{- range $alert.Annotations.SortedPairs -}}
+{{- if and (ne .Name "summary") (ne .Name "description") }}
+<b>{{ .Name | html }}:</b> {{ .Value | html }}
+{{- end -}}
+{{- end -}}
+{{- $kv := ($alert.Labels.Remove (stringSlice "alertname")).SortedPairs -}}
+{{- if gt (len $kv) 0 }}
+
+<i>Labels:</i> {{ range $kv }}<code>{{ .Name | html }}={{ .Value | html }}</code> {{ end }}
+{{- end }}
+
+<i>Started:</i> <code>{{ $alert.StartsAt.Format "2006-01-02 15:04:05 UTC" }}</code>
+{{- if eq $alert.Status "resolved" }}
+<i>Ended:</i> <code>{{ $alert.EndsAt.Format "2006-01-02 15:04:05 UTC" }}</code>
+{{- end -}}
+{{- if $alert.GeneratorURL }}
+<i>Source:</i> <a href="{{ $alert.GeneratorURL | html }}">Open in Prometheus</a>
+{{- end -}}
+{{- if $.ExternalURL }}
+<i>Alerts:</i> <a href="{{ $.ExternalURL | html }}">Open in Alertmanager</a>
+{{- end -}}
+{{- end -}}
+{{- end -}}

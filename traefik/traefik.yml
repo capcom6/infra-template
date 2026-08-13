@@ -68,7 +68,7 @@ certificatesResolvers:
       tlsChallenge: {}
   cloudflare:
     acme:
-      email: "admin@sms-gate.app"
+      email: "admin@example.com"
       storage: "/letsencrypt/cloudflare.json"
       dnsChallenge:
         provider: cloudflare

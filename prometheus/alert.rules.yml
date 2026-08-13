@@ -1,58 +1,115 @@
 groups:
-  - name: example-alerts
+  - name: infra:alerts
     rules:
-      - alert: InstanceDown
-        expr: up == 0
+      - alert: PrometheusDown
+        expr: up{job="prometheus"} == 0
         for: 1m
         labels:
           severity: critical
+          service: prometheus
         annotations:
-          summary: "Instance {{ $labels.instance }} down"
-          description: "{{ $labels.instance }} of job {{ $labels.job }} has been down for more than 1 minute."
+          summary: "Prometheus instance is down"
+          description: "Instance {{ $labels.instance }} (job prometheus) has been unreachable for more than 1 minute."
 
-      - alert: HighCPUUsage
-        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
-        for: 2m
+      - alert: TraefikDown
+        expr: up{job="traefik"} == 0
+        for: 1m
         labels:
-          severity: warning
+          severity: critical
+          service: traefik
         annotations:
-          summary: "High CPU usage on {{ $labels.instance }}"
-          description: "CPU usage on {{ $labels.instance }} has been above 80% for more than 2 minutes."
+          summary: "Traefik instance is down"
+          description: "Instance {{ $labels.instance }} (job traefik) has been unreachable for more than 1 minute."
 
-  - name: cadvisor
+      - alert: CadvisorDown
+        expr: up{job="cadvisor"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: cadvisor
+        annotations:
+          summary: "cAdvisor instance is down"
+          description: "Instance {{ $labels.instance }} (job cadvisor) has been unreachable for more than 1 minute."
+
+      - alert: AlertmanagerDown
+        expr: up{job="alertmanager"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: alertmanager
+        annotations:
+          summary: "Alertmanager instance is down"
+          description: "Instance {{ $labels.instance }} (job alertmanager) has been unreachable for more than 1 minute."
+
+      - alert: TraefikTargetMissing
+        expr: absent(up{job="traefik"})
+        for: 5m
+        labels:
+          severity: critical
+          service: traefik
+        annotations:
+          summary: "Traefik scrape targets missing"
+          description: "No scrape targets found for job traefik for more than 5 minutes. The service may have been removed, scaled down, or its scrape configuration dropped."
+
+      - alert: CadvisorTargetMissing
+        expr: absent(up{job="cadvisor"})
+        for: 5m
+        labels:
+          severity: critical
+          service: cadvisor
+        annotations:
+          summary: "cAdvisor scrape targets missing"
+          description: "No scrape targets found for job cadvisor for more than 5 minutes. The service may have been removed, scaled down, or its scrape configuration dropped."
+
+      - alert: AlertmanagerTargetMissing
+        expr: absent(up{job="alertmanager"})
+        for: 5m
+        labels:
+          severity: critical
+          service: alertmanager
+        annotations:
+          summary: "Alertmanager scrape targets missing"
+          description: "No scrape targets found for job alertmanager for more than 5 minutes. The service may have been removed, scaled down, or its scrape configuration dropped."
+
+  - name: cadvisor:alerts
     rules:
       - alert: ContainerHighCPUUsage
-        expr: avg by(container) (rate(container_cpu_usage_seconds_total[5m])) * 100 > 80
+        expr: avg by(instance, container_label_com_docker_swarm_service_name) (rate(container_cpu_usage_seconds_total{container_label_com_docker_swarm_service_name!=""}[5m])) * 100 > 80
         for: 2m
         labels:
           severity: warning
         annotations:
-          summary: "High CPU usage in container {{ $labels.container }} on {{ $labels.instance }}"
-          description: "CPU usage in container {{ $labels.container }} on {{ $labels.instance }} has been above 80% for more than 2 minutes."
+          summary: "High CPU usage in container {{ $labels.container_label_com_docker_swarm_service_name }} on {{ $labels.instance }}"
+          description: "CPU usage in container {{ $labels.container_label_com_docker_swarm_service_name }} on {{ $labels.instance }} has been above 80% of one core for more than 2 minutes."
 
       - alert: ContainerHighMemoryUsage
-        expr: avg by(container) (container_memory_working_set_bytes) / 1024 / 1024 > 100
+        expr: |
+          container_memory_working_set_bytes{container_label_com_docker_swarm_service_name!=""}
+            / container_spec_memory_limit_bytes{container_label_com_docker_swarm_service_name!=""}
+            > 0.85
+          and
+          container_spec_memory_limit_bytes{container_label_com_docker_swarm_service_name!=""} > 0
         for: 2m
         labels:
           severity: warning
         annotations:
-          summary: "High memory usage in container {{ $labels.container }} on {{ $labels.instance }}"
-          description: "Memory usage in container {{ $labels.container }} on {{ $labels.instance }} has been above 100MB for more than 2 minutes."
+          summary: "High memory usage in container {{ $labels.container_label_com_docker_swarm_service_name }} on {{ $labels.instance }}"
+          description: "Memory usage in container {{ $labels.container_label_com_docker_swarm_service_name }} on {{ $labels.instance }} has been above 85% of its memory limit for more than 2 minutes."
 
       - alert: ContainerHighDiskUsage
-        expr: avg by(container) (container_fs_usage_bytes) / 1024 / 1024 > 100
-        for: 2m
+        expr: sum by(instance, container_label_com_docker_swarm_service_name) (container_fs_usage_bytes{container_label_com_docker_swarm_service_name!=""}) > 1073741824
+        for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "High disk usage in container {{ $labels.container }} on {{ $labels.instance }}"
-          description: "Disk usage in container {{ $labels.container }} on {{ $labels.instance }} has been above 100MB for more than 2 minutes."
+          summary: "High disk usage in container {{ $labels.container_label_com_docker_swarm_service_name }} on {{ $labels.instance }}"
+          description: "Disk usage in container {{ $labels.container_label_com_docker_swarm_service_name }} on {{ $labels.instance }} has been above 1 GiB for more than 5 minutes."
 
       - alert: ContainerHighNetworkUsage
-        expr: avg by(container) (container_network_receive_bytes) / 1024 / 1024 > 100
-        for: 2m
+        expr: sum by(instance, container_label_com_docker_swarm_service_name) (rate(container_network_receive_bytes_total{container_label_com_docker_swarm_service_name!=""}[5m])) > 20971520
+        for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "High network usage in container {{ $labels.container }} on {{ $labels.instance }}"
-          description: "Network usage in container {{ $labels.container }} on {{ $labels.instance }} has been above 100MB for more than 2 minutes."
+          summary: "High network usage in container {{ $labels.container_label_com_docker_swarm_service_name }} on {{ $labels.instance }}"
+          description: "Network receive rate in container {{ $labels.container_label_com_docker_swarm_service_name }} on {{ $labels.instance }} has been above 20 MiB/s for more than 5 minutes."
