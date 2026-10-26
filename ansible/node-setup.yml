@@ -1,0 +1,52 @@
+---
+- name: Provision Docker Swarm nodes
+  hosts: new_nodes
+  become: true
+  gather_facts: true
+  any_errors_fatal: true
+
+  pre_tasks:
+    - name: Validate Swarm role
+      ansible.builtin.assert:
+        that:
+          - swarm_role | default('') in ['init', 'join_manager', 'join_worker']
+        fail_msg: >-
+          swarm_role must be init, join_manager, or join_worker
+          (got '{{ swarm_role | default('') }}').
+
+    - name: Validate join configuration
+      ansible.builtin.assert:
+        that:
+          - swarm_manager_addr | default('') | length > 0
+          - swarm_join_token | default('') | length > 0
+        fail_msg: >-
+          swarm_manager_addr and swarm_join_token are required for
+          swarm_role={{ swarm_role }}. Pass the token with
+          -e @secrets/swarm.yml from the ansible directory.
+      when: swarm_role | default('') in ['join_manager', 'join_worker']
+
+  roles:
+    - role: docker_engine
+      tags:
+        - docker
+    - role: firewall
+      tags:
+        - firewall
+    - role: swarm
+      tags:
+        - swarm
+
+- name: Deploy Portainer
+  hosts: swarm_managers
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Deploy or update the Portainer stack
+      ansible.builtin.include_role:
+        name: portainer
+      when:
+        - portainer_deploy | default(true) | bool
+        - inventory_hostname == groups['swarm_managers'][0]
+      tags:
+        - portainer

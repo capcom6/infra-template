@@ -1,0 +1,16 @@
+---
+firewall_manage: true
+firewall_zone: public
+
+firewall_swarm_ports:
+  - 2377/tcp
+  - 7946/tcp
+  - 7946/udp
+  - 4789/udp
+
+# Portainer is published directly on 9443. Add 80/tcp and 443/tcp here only when
+# Traefik runs on this node.
+firewall_extra_ports:
+  - 9443/tcp
+
+firewall_ports: "{{ firewall_swarm_ports + firewall_extra_ports }}"

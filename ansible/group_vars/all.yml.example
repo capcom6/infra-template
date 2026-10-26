@@ -1,0 +1,38 @@
+---
+# Copy this file to all.yml before running the playbook.
+# all.yml is ignored by git.
+
+# Remove packages that conflict with Docker CE on a fresh RHEL-family node.
+# This is destructive: keep the package list explicit and review it first.
+docker_engine_remove_conflicts: true
+docker_engine_conflict_packages:
+  - docker
+  - docker-client
+  - docker-client-latest
+  - docker-common
+  - docker-latest
+  - docker-latest-logrotate
+  - docker-logrotate
+  - docker-engine
+  - podman
+  - podman-docker
+  - buildah
+  - runc
+
+# Existing Swarm manager address (host only, without :2377).
+# Required for swarm_role: join_manager and swarm_role: join_worker.
+swarm_manager_addr: 203.0.113.10
+
+# Address advertised by the new node. Defaults to the primary IPv4 address.
+swarm_advertise_addr: "{{ ansible_default_ipv4.address | default(ansible_host) }}"
+
+# Existing manager used to apply labels to joined workers. The manager must be
+# present in the inventory. Not needed when the new node is a manager.
+swarm_label_delegate: node1
+
+# Configure firewalld only when it is active. Set to false if the firewall is
+# managed outside this playbook.
+firewall_manage: true
+
+# Deploy or update the Portainer stack from the first manager in the inventory.
+portainer_deploy: true

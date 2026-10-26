@@ -1,0 +1,164 @@
+---
+- name: Read Docker Swarm state
+  ansible.builtin.command:
+    argv:
+      - docker
+      - info
+      - --format
+      - "{% raw %}{{json .Swarm}}{% endraw %}"
+  register: swarm_info_raw
+  changed_when: false
+  check_mode: false
+
+- name: Parse Docker Swarm state
+  ansible.builtin.set_fact:
+    swarm_info: "{{ (swarm_info_raw.stdout | from_json) or {} }}"
+
+- name: Reject unhealthy Swarm states
+  ansible.builtin.assert:
+    that:
+      - swarm_info.LocalNodeState | default('inactive') not in ['pending', 'locked', 'error']
+    fail_msg: >-
+      Docker Swarm is in state '{{ swarm_info.LocalNodeState | default('unknown') }}'.
+      Resolve the node state before retrying.
+
+- name: Initialize a new Swarm
+  ansible.builtin.command:
+    argv:
+      - docker
+      - swarm
+      - init
+      - --advertise-addr
+      - "{{ swarm_advertise_addr }}"
+  changed_when: true
+  no_log: true
+  when:
+    - swarm_role == "init"
+    - swarm_info.LocalNodeState | default('inactive') == "inactive"
+
+- name: Join an existing Swarm
+  ansible.builtin.command:
+    argv:
+      - docker
+      - swarm
+      - join
+      - --token
+      - "{{ swarm_join_token }}"
+      - --advertise-addr
+      - "{{ swarm_advertise_addr }}"
+      - "{{ swarm_manager_addr }}:2377"
+  changed_when: true
+  no_log: true
+  when:
+    - swarm_role in ["join_manager", "join_worker"]
+    - swarm_info.LocalNodeState | default('inactive') == "inactive"
+
+- name: Refresh Docker Swarm state
+  ansible.builtin.command:
+    argv:
+      - docker
+      - info
+      - --format
+      - "{% raw %}{{json .Swarm}}{% endraw %}"
+  register: swarm_info_after_raw
+  changed_when: false
+  check_mode: false
+
+- name: Parse refreshed Docker Swarm state
+  ansible.builtin.set_fact:
+    swarm_info: "{{ (swarm_info_after_raw.stdout | from_json) or {} }}"
+
+- name: Verify the node is an active Swarm manager
+  ansible.builtin.assert:
+    that:
+      - swarm_info.LocalNodeState | default('unknown') == "active"
+      - swarm_info.ControlAvailable | default(false) | bool
+    fail_msg: >-
+      The node is not an active Swarm manager. Current state:
+      {{ swarm_info.LocalNodeState | default('unknown') }}, manager:
+      {{ swarm_info.ControlAvailable | default(false) }}.
+  when: swarm_role in ["init", "join_manager"]
+
+- name: Verify the node is an active Swarm member
+  ansible.builtin.assert:
+    that:
+      - swarm_info.LocalNodeState | default('unknown') == "active"
+    fail_msg: >-
+      The node is not an active Swarm member. Current state:
+      {{ swarm_info.LocalNodeState | default('unknown') }}.
+  when: swarm_role == "join_worker"
+
+- name: Warn when a manager already exists for a join_worker request
+  ansible.builtin.debug:
+    msg: >-
+      The node is already a Swarm manager. swarm_role=join_worker does not
+      demote it; the existing role is left unchanged.
+  when:
+    - swarm_role == "join_worker"
+    - swarm_info.ControlAvailable | default(false) | bool
+
+- name: Get the Swarm node ID
+  ansible.builtin.command:
+    argv:
+      - docker
+      - info
+      - --format
+      - "{% raw %}{{.Swarm.NodeID}}{% endraw %}"
+  register: swarm_node_id
+  changed_when: false
+  check_mode: false
+
+- name: Require a manager for worker label updates
+  ansible.builtin.assert:
+    that:
+      - swarm_label_delegate | default('') | length > 0
+      - swarm_label_delegate | default('') in groups['all'] | default([])
+    fail_msg: >-
+      swarm_label_delegate must name an existing manager from the inventory to
+      apply labels to this worker.
+  when:
+    - swarm_node_labels | length > 0
+    - not (swarm_info.ControlAvailable | default(false) | bool)
+
+- name: Select the manager used for label updates
+  ansible.builtin.set_fact:
+    swarm_label_target: >-
+      {{ inventory_hostname if swarm_info.ControlAvailable | default(false) | bool
+         else swarm_label_delegate }}
+  when: swarm_node_labels | length > 0
+
+- name: Read the current node labels
+  ansible.builtin.command:
+    argv:
+      - docker
+      - node
+      - inspect
+      - --format
+      - "{% raw %}{{json .Spec.Labels}}{% endraw %}"
+      - "{{ swarm_node_id.stdout | trim }}"
+  delegate_to: "{{ swarm_label_target }}"
+  register: swarm_current_labels_raw
+  changed_when: false
+  check_mode: false
+  when: swarm_node_labels | length > 0
+
+- name: Parse the current node labels
+  ansible.builtin.set_fact:
+    swarm_current_labels: "{{ (swarm_current_labels_raw.stdout | from_json) or {} }}"
+  when: swarm_node_labels | length > 0
+
+- name: Apply configured node labels
+  ansible.builtin.command:
+    argv:
+      - docker
+      - node
+      - update
+      - --label-add
+      - "{{ item.key }}={{ item.value }}"
+      - "{{ swarm_node_id.stdout | trim }}"
+  loop: "{{ swarm_node_labels | dict2items }}"
+  delegate_to: "{{ swarm_label_target }}"
+  changed_when: true
+  when: >-
+    (swarm_current_labels[item.key] | default('') | string)
+    != (item.value | string)

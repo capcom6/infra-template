@@ -1,0 +1,35 @@
+---
+- name: Check whether firewalld is active
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - firewalld
+  register: firewall_service_check
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Open Swarm and Portainer ports in firewalld
+  when:
+    - firewall_manage | bool
+    - firewall_service_check.stdout | trim == "active"
+  block:
+    - name: Enable required firewalld ports
+      ansible.posix.firewalld:
+        port: "{{ item }}"
+        zone: "{{ firewall_zone }}"
+        permanent: true
+        immediate: true
+        state: enabled
+      loop: "{{ firewall_ports }}"
+
+- name: Warn when firewalld is active but unmanaged
+  ansible.builtin.debug:
+    msg: >-
+      firewalld is active and firewall_manage is false. Ensure these ports are
+      reachable between Swarm nodes: {{ firewall_swarm_ports | join(', ') }};
+      and for Portainer: {{ firewall_extra_ports | join(', ') }}.
+  when:
+    - not (firewall_manage | bool)
+    - firewall_service_check.stdout | trim == "active"
