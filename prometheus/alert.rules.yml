@@ -71,6 +71,17 @@ groups:
           summary: "Alertmanager scrape targets missing"
           description: "No scrape targets found for job alertmanager for more than 5 minutes. The service may have been removed, scaled down, or its scrape configuration dropped."
 
+  - name: node:alerts
+    rules:
+      - alert: HostLowAvailableMemory
+        expr: node_memory_MemAvailable_bytes < 314572800
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low available memory on {{ $labels.instance }}"
+          description: "Available memory on {{ $labels.instance }} has been below 300 MiB for more than 5 minutes."
+
   - name: cadvisor:alerts
     rules:
       - alert: ContainerHighCPUUsage

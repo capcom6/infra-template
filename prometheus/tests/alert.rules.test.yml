@@ -1,0 +1,109 @@
+# Unit tests for the node_exporter alert group in prometheus/alert.rules.yml.
+#
+# Run from the repo root:
+#   promtool test rules prometheus/tests/alert.rules.test.yml
+#
+# Threshold under test: node_memory_MemAvailable_bytes < 314572800 (300 MiB).
+# Series mirror the real scrape shape: job="node" comes from the
+# prometheus.io/job service label, instance from the SD instance relabel.
+rule_files:
+  - ../alert.rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # 1. Happy path, firing: 200000000 B (190.7 MiB) stays below 300 MiB.
+  #    `for: 5m` means the alert is pending until eval_time 5m.
+  - interval: 1m
+    input_series:
+      - series: 'node_memory_MemAvailable_bytes{job="node", instance="sms-gate.app/task-1"}'
+        values: '200000000 200000000 200000000 200000000 200000000 200000000 200000000 200000000 200000000 200000000'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: HostLowAvailableMemory
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: sms-gate.app/task-1
+            exp_annotations:
+              summary: "Low available memory on sms-gate.app/task-1"
+              description: "Available memory on sms-gate.app/task-1 has been below 300 MiB for more than 5 minutes."
+
+  # 2. Pending, not yet firing: same series at eval_time 4m, one minute short
+  #    of the 5m `for` duration. Proves the alert is not instantaneously on.
+  - interval: 1m
+    input_series:
+      - series: 'node_memory_MemAvailable_bytes{job="node", instance="sms-gate.app/task-1"}'
+        values: '200000000 200000000 200000000 200000000 200000000 200000000 200000000 200000000 200000000 200000000'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: HostLowAvailableMemory
+        exp_alerts: []
+
+  # 3. Happy path, not firing: 2000000000 B (1.86 GiB) is far above 300 MiB.
+  - interval: 1m
+    input_series:
+      - series: 'node_memory_MemAvailable_bytes{job="node", instance="sms-gate.app/task-1"}'
+        values: '2000000000 2000000000 2000000000 2000000000 2000000000 2000000000 2000000000 2000000000 2000000000 2000000000'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: HostLowAvailableMemory
+        exp_alerts: []
+
+  # 4. Boundary: exactly 314572800 B (300 MiB). The expression uses strict `<`,
+  # so exactly at the threshold must NOT fire.
+  - interval: 1m
+    input_series:
+      - series: 'node_memory_MemAvailable_bytes{job="node", instance="sms-gate.app/task-1"}'
+        values: '314572800 314572800 314572800 314572800 314572800 314572800 314572800 314572800 314572800 314572800'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: HostLowAvailableMemory
+        exp_alerts: []
+
+  # 5. Boundary: one byte under the threshold (314572799 B) must fire.
+  - interval: 1m
+    input_series:
+      - series: 'node_memory_MemAvailable_bytes{job="node", instance="sms-gate.app/task-1"}'
+        values: '314572799 314572799 314572799 314572799 314572799 314572799 314572799 314572799 314572799 314572799'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: HostLowAvailableMemory
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: sms-gate.app/task-1
+            exp_annotations:
+              summary: "Low available memory on sms-gate.app/task-1"
+              description: "Available memory on sms-gate.app/task-1 has been below 300 MiB for more than 5 minutes."
+
+  # 6. Input variation: three nodes in one scrape, only the two under the
+  #    threshold produce an alert. Proves the alert is per-series, not global.
+  - interval: 1m
+    input_series:
+      - series: 'node_memory_MemAvailable_bytes{job="node", instance="node-a/task-1"}'
+        values: '150000000 150000000 150000000 150000000 150000000 150000000 150000000'
+      - series: 'node_memory_MemAvailable_bytes{job="node", instance="node-b/task-1"}'
+        values: '314572799 314572799 314572799 314572799 314572799 314572799 314572799'
+      - series: 'node_memory_MemAvailable_bytes{job="node", instance="node-c/task-1"}'
+        values: '8000000000 8000000000 8000000000 8000000000 8000000000 8000000000 8000000000'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: HostLowAvailableMemory
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: node-a/task-1
+            exp_annotations:
+              summary: "Low available memory on node-a/task-1"
+              description: "Available memory on node-a/task-1 has been below 300 MiB for more than 5 minutes."
+          - exp_labels:
+              severity: warning
+              job: node
+              instance: node-b/task-1
+            exp_annotations:
+              summary: "Low available memory on node-b/task-1"
+              description: "Available memory on node-b/task-1 has been below 300 MiB for more than 5 minutes."
