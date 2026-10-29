@@ -45,6 +45,9 @@
     - name: Deploy or update the Portainer stack
       ansible.builtin.include_role:
         name: portainer
+        apply:
+          tags:
+            - portainer
       when:
         - portainer_deploy | default(true) | bool
         - inventory_hostname == groups['swarm_managers'][0]

@@ -10,26 +10,52 @@
   failed_when: false
   check_mode: false
 
-- name: Open Swarm and Portainer ports in firewalld
+- name: Configure firewalld zones for Swarm traffic
   when:
     - firewall_manage | bool
     - firewall_service_check.stdout | trim == "active"
   block:
-    - name: Enable required firewalld ports
+    - name: Require the private Swarm interface
+      ansible.builtin.assert:
+        that:
+          - firewall_swarm_interface | length > 0
+        fail_msg: >-
+          Set firewall_swarm_interface to this node's private-network interface
+          before managing Swarm ports in firewalld.
+
+    - name: Assign the private interface to the Swarm zone
       ansible.posix.firewalld:
-        port: "{{ item }}"
-        zone: "{{ firewall_zone }}"
+        interface: "{{ firewall_swarm_interface }}"
+        zone: "{{ firewall_swarm_zone }}"
         permanent: true
         immediate: true
         state: enabled
-      loop: "{{ firewall_ports }}"
+
+    - name: Enable Swarm ports in the private zone
+      ansible.posix.firewalld:
+        port: "{{ item }}"
+        zone: "{{ firewall_swarm_zone }}"
+        permanent: true
+        immediate: true
+        state: enabled
+      loop: "{{ firewall_swarm_ports }}"
+
+    - name: Enable published ports in the public zone
+      ansible.posix.firewalld:
+        port: "{{ item }}"
+        zone: "{{ firewall_public_zone }}"
+        permanent: true
+        immediate: true
+        state: enabled
+      loop: "{{ firewall_extra_ports }}"
 
 - name: Warn when firewalld is active but unmanaged
   ansible.builtin.debug:
     msg: >-
-      firewalld is active and firewall_manage is false. Ensure these ports are
-      reachable between Swarm nodes: {{ firewall_swarm_ports | join(', ') }};
-      and for Portainer: {{ firewall_extra_ports | join(', ') }}.
+      firewalld is active and firewall_manage is false. Ensure Swarm ports
+      {{ firewall_swarm_ports | join(', ') }} are restricted to the private
+      network, and published ports {{ firewall_extra_ports | join(', ') }} are
+      configured in the appropriate public zone.
   when:
     - not (firewall_manage | bool)
     - firewall_service_check.stdout | trim == "active"

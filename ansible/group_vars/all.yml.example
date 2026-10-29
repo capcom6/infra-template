@@ -34,5 +34,11 @@ swarm_label_delegate: node1
 # managed outside this playbook.
 firewall_manage: true
 
+# Set this to the private-network interface on each Swarm node. Swarm ports are
+# opened only in firewalld's internal zone on this interface; published ports
+# remain in the public zone. Override per host in inventory if interface names
+# differ.
+firewall_swarm_interface: ""
+
 # Deploy or update the Portainer stack from the first manager in the inventory.
 portainer_deploy: true

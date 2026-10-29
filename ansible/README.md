@@ -6,7 +6,8 @@ repository:
 - installs Docker CE on a supported RHEL-family distribution
 - initializes a new Swarm or joins an existing one
 - applies Swarm node labels
-- opens Swarm and Portainer ports in `firewalld` when it is active
+- restricts Swarm ports to a configured private interface and opens published
+  ports separately in `firewalld` when it is active
 - deploys or updates the existing [compose.portainer.yml](../compose.portainer.yml)
 
 The playbook does not deploy the infra or monitoring stacks, and it does not
@@ -20,14 +21,21 @@ restarted.
 - SSH access to the target nodes.
 - AlmaLinux/RHEL/Rocky/CentOS 8, 9, or 10. Docker CE repository support must be
   verified before extending `docker_engine_supported_major_versions`.
-- Inbound connectivity for Swarm and Portainer. If `firewalld` is active, the
-  playbook opens `2377/tcp`, `7946/tcp`, `7946/udp`, `4789/udp`, and `9443/tcp`.
-  Add `80/tcp` and `443/tcp` to `firewall_extra_ports` when Traefik runs on the
-  node.
+- A private-network interface shared by the Swarm nodes. Set
+  `firewall_swarm_interface` to that interface on each node. If `firewalld` is
+  active, the playbook assigns it to the `internal` zone and opens
+  `2377/tcp`, `7946/tcp`, `7946/udp`, and `4789/udp` there. Portainer's
+  `9443/tcp` is opened separately in the `public` zone. Add `80/tcp` and
+  `443/tcp` to `firewall_extra_ports` when Traefik runs on the node.
 
 Docker manages iptables rules for published container ports, but it does not
 open `firewalld` for Swarm control and overlay traffic. If `firewalld` is active,
-use `firewall_manage: true` or open those ports outside Ansible.
+set `firewall_swarm_interface` to the private interface or open Swarm ports only
+on the private network outside Ansible. The interface binding moves that
+interface into firewalld's `internal` zone; published ports remain in `public`.
+The `internal` zone trusts the network and applies all of that zone's default
+and locally configured rules, not just the Swarm ports listed above. Use only
+an interface connected to the trusted private network.
 
 ## Install the collection
 
@@ -116,6 +124,9 @@ without `--limit`, or include the manager, to deploy or update Portainer.
 | `docker_engine_conflict_packages` | podman/buildah/runc set | Explicit package list for conflict removal        |
 | `docker_engine_daemon_options`    | log rotation only       | Docker daemon JSON options                        |
 | `firewall_manage`                 | `true`                  | Configure active `firewalld`                      |
+| `firewall_swarm_interface`        | empty                   | Private interface assigned to the `internal` zone |
+| `firewall_swarm_zone`             | `internal`               | Zone for Swarm-only ports                         |
+| `firewall_public_zone`            | `public`                 | Zone for published ports                          |
 | `firewall_extra_ports`            | `9443/tcp`              | Additional published ports                        |
 | `portainer_deploy`                | `true`                  | Deploy or update Portainer                        |
 | `portainer_stack_name`            | `portainer`             | Docker stack name                                 |
@@ -140,7 +151,9 @@ docker version
 docker info
 docker node ls
 docker node inspect self
-firewall-cmd --list-ports
+firewall-cmd --get-active-zones
+firewall-cmd --zone=internal --list-ports
+firewall-cmd --zone=public --list-ports
 docker stack services portainer
 ```
 

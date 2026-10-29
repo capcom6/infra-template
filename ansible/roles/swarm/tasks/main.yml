@@ -160,5 +160,5 @@
   delegate_to: "{{ swarm_label_target }}"
   changed_when: true
   when: >-
-    (swarm_current_labels[item.key] | default('') | string)
-    != (item.value | string)
+    item.key not in swarm_current_labels
+    or (swarm_current_labels[item.key] | string) != (item.value | string)
