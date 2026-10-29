@@ -225,13 +225,13 @@ docker node update --label-add portainer=true <node>
 | ------------ | ------------ | ------------------------ |
 | `traefik`    | manager node | Traefik                  |
 | `cronjob`    | manager node | swarm-cronjob scheduler  |
-| `portainer`  | manager node | Portainer                |
+| `portainer`  | any node     | Portainer                |
 | `redis`      | any node     | Valkey                   |
 | `db`         | any node     | MariaDB, backup job      |
 | `prometheus` | any node     | Prometheus, Alertmanager |
 | `grafana`    | any node     | Grafana                  |
 
-cAdvisor (monitoring) and the Portainer agent (portainer) run in `global` mode on every Linux node, so they need no label.
+cAdvisor (monitoring) runs in `global` mode on every Linux node, so it needs no label. The Portainer agent runs in `global` mode on every Linux manager node, so it needs no label.
 
 ### Configuration files
 
