@@ -1,0 +1,98 @@
+---
+- name: Assert a supported RHEL-family platform
+  ansible.builtin.assert:
+    that:
+      - ansible_os_family == "RedHat"
+      - ansible_distribution in docker_engine_supported_distributions
+      - ansible_distribution_major_version in docker_engine_supported_major_versions
+    fail_msg: >-
+      Unsupported platform {{ ansible_distribution }}
+      {{ ansible_distribution_major_version }}. Supported distributions:
+      {{ docker_engine_supported_distributions | join(', ') }}; supported major
+      versions: {{ docker_engine_supported_major_versions | join(', ') }}.
+
+- name: Check whether Docker CE is installed
+  ansible.builtin.command:
+    argv:
+      - rpm
+      - -q
+      - docker-ce
+  register: docker_engine_package_check
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Install repository prerequisites
+  ansible.builtin.dnf:
+    name: "{{ docker_engine_prerequisite_packages }}"
+    state: present
+  when: docker_engine_package_check.rc != 0
+
+- name: Configure the Docker CE repository
+  ansible.builtin.get_url:
+    url: "{{ docker_engine_repo_url }}"
+    dest: "{{ docker_engine_repo_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: docker_engine_package_check.rc != 0
+
+- name: Remove packages that conflict with Docker CE
+  ansible.builtin.dnf:
+    name: "{{ docker_engine_conflict_packages }}"
+    state: absent
+    autoremove: false
+  when:
+    - docker_engine_package_check.rc != 0
+    - docker_engine_remove_conflicts | bool
+
+- name: Install Docker CE
+  ansible.builtin.dnf:
+    name: "{{ docker_engine_packages }}"
+    state: present
+    update_cache: true
+  when: docker_engine_package_check.rc != 0
+
+- name: Ensure the Docker configuration directory exists
+  ansible.builtin.file:
+    path: "{{ docker_engine_daemon_config_path | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure the Docker daemon
+  ansible.builtin.template:
+    src: daemon.json.j2
+    dest: "{{ docker_engine_daemon_config_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart Docker
+  when: docker_engine_manage_daemon_config | bool
+
+- name: Add users to the docker group
+  ansible.builtin.user:
+    name: "{{ item }}"
+    groups: docker
+    append: true
+  loop: "{{ docker_engine_users }}"
+
+- name: Enable and start Docker
+  ansible.builtin.systemd_service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Wait for the Docker socket
+  ansible.builtin.wait_for:
+    path: /var/run/docker.sock
+    timeout: 30
+
+- name: Apply pending Docker restarts before Swarm setup
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for the Docker socket after restart
+  ansible.builtin.wait_for:
+    path: /var/run/docker.sock
+    timeout: 30

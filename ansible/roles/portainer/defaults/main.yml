@@ -1,0 +1,6 @@
+---
+portainer_deploy: true
+portainer_stack_name: portainer
+portainer_install_dir: /opt/infra-template
+portainer_compose_source: "{{ playbook_dir }}/../compose.portainer.yml"
+portainer_wait_timeout: 300
