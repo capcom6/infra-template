@@ -1,0 +1,56 @@
+---
+docker_engine_supported_distributions:
+  - RedHat
+  - AlmaLinux
+  - Rocky
+  - CentOS
+  - OracleLinux
+
+# Extend this only after verifying that the Docker CE repository supports the
+# target release and that the package set below is still correct.
+docker_engine_supported_major_versions:
+  - "8"
+  - "9"
+  - "10"
+
+# Docker publishes separate repositories for RHEL and CentOS Stream. AlmaLinux
+# and Rocky Linux use the CentOS Stream repository.
+docker_engine_repo_url: >-
+  https://download.docker.com/linux/{{ 'rhel' if ansible_distribution == 'RedHat' else 'centos' }}/docker-ce.repo
+docker_engine_repo_path: /etc/yum.repos.d/docker-ce.repo
+
+docker_engine_prerequisite_packages:
+  - dnf-plugins-core
+  - ca-certificates
+  - curl
+
+docker_engine_packages:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-buildx-plugin
+  - docker-compose-plugin
+
+# Destructive: review docker_engine_conflict_packages before enabling this on a
+# host that already uses podman or buildah.
+docker_engine_remove_conflicts: false
+docker_engine_conflict_packages:
+  - docker
+  - docker-client
+  - docker-client-latest
+  - docker-common
+  - docker-latest
+  - docker-latest-logrotate
+  - docker-logrotate
+  - docker-engine
+  - podman
+  - podman-docker
+  - buildah
+  - runc
+
+docker_engine_manage_daemon_config: true
+docker_engine_daemon_config_path: /etc/docker/daemon.json
+docker_engine_daemon_options:
+  log-driver: journald
+
+docker_engine_users: []
