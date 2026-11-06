@@ -109,10 +109,11 @@ For a worker node with labels, `swarm_label_delegate` must name an existing
 manager that is present in the inventory. Label updates are delegated there
 because `docker node update` only works on managers.
 
-Portainer runs only when `portainer_deploy` is true and the manager is in the
-play; otherwise Portainer is not touched. Set `portainer_deploy: true` after
-restricting access to 9443/tcp, then run the playbook without `--limit`, or
-include the manager, to deploy or update Portainer.
+Portainer runs only when `portainer_deploy` is true and the first manager listed
+in `swarm_managers` is in the play; otherwise Portainer is not touched. Set
+`portainer_deploy: true` after restricting access to 9443/tcp, then run the
+playbook without `--limit`, or with a `--limit` that includes that first
+manager, to deploy or update Portainer.
 
 ## Configuration reference
 
@@ -124,9 +125,9 @@ include the manager, to deploy or update Portainer.
 | `swarm_advertise_addr`            | primary IPv4            | Address advertised to the cluster (the private address on dual-network hosts) |
 | `swarm_node_labels`               | `{}`                    | Labels applied to the node                                                    |
 | `swarm_label_delegate`            | none                    | Existing manager used to label workers                                        |
-| `docker_engine_remove_conflicts`  | `false`                 | Remove Docker-conflicting packages on fresh hosts                             |
+| `docker_engine_remove_conflicts`  | `false`                 | Remove Docker-conflicting packages (example file sets `true`)                 |
 | `docker_engine_conflict_packages` | podman/buildah/runc set | Explicit package list for conflict removal                                    |
-| `docker_engine_daemon_options`    | log rotation only       | Docker daemon JSON options                                                    |
+| `docker_engine_daemon_options`    | `log-driver: journald`  | Docker daemon JSON options                                                    |
 | `firewall_manage`                 | `true`                  | Configure active `firewalld`                                                  |
 | `firewall_swarm_interface`        | empty                   | Private interface assigned to the `internal` zone                             |
 | `firewall_swarm_zone`             | `internal`              | Zone for Swarm-only ports                                                     |
@@ -134,6 +135,10 @@ include the manager, to deploy or update Portainer.
 | `firewall_extra_ports`            | `9443/tcp`              | Additional published ports                                                    |
 | `portainer_deploy`                | `false`                 | Deploy or update Portainer                                                    |
 | `portainer_stack_name`            | `portainer`             | Docker stack name                                                             |
+
+`group_vars/all.yml.example` sets `docker_engine_remove_conflicts: true`, so
+copying the example enables removal of the listed conflicting packages on hosts
+without Docker CE.
 
 The root `.gitignore` excludes `inventory.yml`, `group_vars/all.yml`, join
 tokens, and retry files.
