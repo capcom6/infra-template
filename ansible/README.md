@@ -110,10 +110,28 @@ manager that is present in the inventory. Label updates are delegated there
 because `docker node update` only works on managers.
 
 Portainer runs only when `portainer_deploy` is true and the first manager listed
-in `swarm_managers` is in the play; otherwise Portainer is not touched. Set
-`portainer_deploy: true` after restricting access to 9443/tcp, then run the
-playbook without `--limit`, or with a `--limit` that includes that first
-manager, to deploy or update Portainer.
+in `swarm_managers` is in the play; otherwise Portainer is not touched.
+
+Port `9443` is published through the Swarm routing mesh, so it is reachable on
+every node, and the firewall role opens `9443/tcp` in the public zone whenever
+`firewall_extra_ports` lists it. Restrict 9443/tcp on every Swarm node in a way
+this playbook does not override (keep it out of `firewall_extra_ports` and
+manage the rule outside `firewall_manage`), then set `portainer_deploy: true`
+and run with the join inputs:
+
+```bash
+cd ansible
+ansible-playbook node-setup.yml -e @secrets/swarm.yml
+```
+
+Without `-e @secrets/swarm.yml` a full-inventory run fails the join validation
+for the example worker and aborts the run (`any_errors_fatal`), so Portainer
+never deploys. To deploy or update only Portainer, limit the run to that first
+manager:
+
+```bash
+ansible-playbook node-setup.yml --limit <first-manager>
+```
 
 ## Configuration reference
 
