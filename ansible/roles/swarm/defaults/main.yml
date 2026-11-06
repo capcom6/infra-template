@@ -1,0 +1,7 @@
+---
+swarm_role: ""
+swarm_manager_addr: ""
+swarm_join_token: ""
+swarm_advertise_addr: "{{ ansible_default_ipv4.address | default(ansible_host) }}"
+swarm_node_labels: {}
+swarm_label_delegate: ""

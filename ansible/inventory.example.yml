@@ -1,0 +1,35 @@
+---
+# Copy this file to inventory.yml and replace hosts, addresses, and labels.
+# inventory.yml is ignored by git.
+#
+# new_nodes contains the hosts this run should provision. swarm_managers is the
+# cluster's manager group and is also used to deploy Portainer once. When adding
+# a worker only, keep an existing manager in swarm_managers and leave it out of
+# new_nodes.
+all:
+  vars:
+    ansible_user: almalinux
+    ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+
+  children:
+    swarm_managers:
+      hosts:
+        node1:
+          ansible_host: 203.0.113.10
+          swarm_role: init
+          swarm_node_labels:
+            traefik: "true"
+            cronjob: "true"
+            portainer: "true"
+
+    swarm_workers:
+      hosts:
+        node2:
+          ansible_host: 203.0.113.11
+          swarm_role: join_worker
+          swarm_node_labels: {}
+
+    new_nodes:
+      hosts:
+        node1:
+        node2:
