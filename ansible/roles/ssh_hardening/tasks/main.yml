@@ -1,6 +1,31 @@
 ---
 - name: Harden the ssh daemon configuration
   block:
+    - name: Check the sshd configuration before changes
+      ansible.builtin.stat:
+        path: "{{ ssh_hardening_config_path }}"
+      register: ssh_hardening_config_stat
+
+    - name: Read the sshd configuration before changes
+      ansible.builtin.slurp:
+        path: "{{ ssh_hardening_config_path }}"
+      register: ssh_hardening_config_before
+      when: ssh_hardening_config_stat.stat.exists
+
+    - name: Check the legacy drop-in before changes
+      ansible.builtin.stat:
+        path: "{{ ssh_hardening_legacy_dropin_path }}"
+      register: ssh_hardening_legacy_dropin_stat
+      when: ssh_hardening_legacy_dropin_path | default('') | length > 0
+
+    - name: Read the legacy drop-in before changes
+      ansible.builtin.slurp:
+        path: "{{ ssh_hardening_legacy_dropin_path }}"
+      register: ssh_hardening_legacy_dropin_before
+      when:
+        - ssh_hardening_legacy_dropin_path | default('') | length > 0
+        - ssh_hardening_legacy_dropin_stat.stat.exists | default(false)
+
     - name: Remove the superseded sshd drop-in
       ansible.builtin.file:
         path: "{{ ssh_hardening_legacy_dropin_path }}"
@@ -118,14 +143,23 @@
         - not ansible_check_mode
         - not ssh_hardening_password_authentication
   rescue:
-    - name: Remove the hardening block
-      ansible.builtin.blockinfile:
-        path: "{{ ssh_hardening_config_path }}"
-        marker: "# {mark} ANSIBLE MANAGED SSH HARDENING"
-        state: absent
+    - name: Restore the sshd configuration from before this run
+      ansible.builtin.copy:
+        content: "{{ ssh_hardening_config_before.content | b64decode }}"
+        dest: "{{ ssh_hardening_config_path }}"
+        mode: "{{ ssh_hardening_config_stat.stat.mode }}"
       when:
-        - ssh_hardening_block is defined
-        - ssh_hardening_block is changed
+        - ssh_hardening_config_before is defined
+        - ssh_hardening_config_before.content is defined
+
+    - name: Restore the legacy drop-in removed by this run
+      ansible.builtin.copy:
+        content: "{{ ssh_hardening_legacy_dropin_before.content | b64decode }}"
+        dest: "{{ ssh_hardening_legacy_dropin_path }}"
+        mode: "{{ ssh_hardening_legacy_dropin_stat.stat.mode }}"
+      when:
+        - ssh_hardening_legacy_dropin_before is defined
+        - ssh_hardening_legacy_dropin_before.content is defined
 
     - name: Re-validate the sshd configuration after rollback
       ansible.builtin.command:
