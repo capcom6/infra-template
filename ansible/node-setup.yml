@@ -30,12 +30,12 @@
       when: swap_manage | default(true) | bool
       tags:
         - swap
-    - role: docker_engine
-      tags:
-        - docker
     - role: firewall
       tags:
         - firewall
+    - role: docker_engine
+      tags:
+        - docker
     - role: ssh_hardening
       when: ssh_hardening_manage | default(true) | bool
       tags:
