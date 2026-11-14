@@ -36,6 +36,10 @@
     - role: firewall
       tags:
         - firewall
+    - role: ssh_hardening
+      when: ssh_hardening_manage | default(true) | bool
+      tags:
+        - ssh
     - role: fail2ban
       when: fail2ban_manage | default(true) | bool
       tags:

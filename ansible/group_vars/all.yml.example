@@ -52,6 +52,15 @@ firewall_manage: true
 # differ.
 firewall_swarm_interface: ""
 
+# SSH hardening block at the top of /etc/ssh/sshd_config (wins over every
+# drop-in, including RHEL's stock 50-redhat.conf). Inventory authenticates
+# with a key, so password authentication is disabled by default. Set
+# ssh_hardening_password_authentication: true on any host that still needs
+# password logins. Root login is prohibited entirely
+# (ssh_hardening_permit_root_login: "no"), so inventory must use a regular
+# user with sudo; override per host only if root access is required.
+ssh_hardening_manage: true
+
 # SSH brute-force protection with fail2ban. fail2ban ships in EPEL; the
 # playbook downloads the EPEL release package from Fedora when fail2ban is not
 # installed yet (set fail2ban_install_epel: false to use a mirror you trust).

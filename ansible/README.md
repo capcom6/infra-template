@@ -10,6 +10,13 @@ repository:
 - applies Swarm node labels
 - installs, enables, and configures `firewalld`, restricting Swarm ports to a
   configured private interface and opening published ports separately
+- hardens sshd with a managed block at the top of the main `sshd_config`,
+  before the `sshd_config.d` Include, so the values win sshd's
+  first-obtained-value rule over every drop-in - including RHEL's stock
+  `50-redhat.conf` with its `X11Forwarding yes` (key-only login,
+  `PermitRootLogin no`, `MaxAuthTries`, session limits), validated with
+  `sshd -t` and `sshd -T` and rolled back automatically if it does not take
+  effect
 - installs `fail2ban` from EPEL with an `sshd` jail that bans through firewalld
 - optionally deploys or updates the existing
   [compose.portainer.yml](../compose.portainer.yml) when `portainer_deploy` is
@@ -45,6 +52,15 @@ untouched. If the rendered file differs, Docker is restarted.
   EPEL release package from Fedora. Set `fail2ban_install_epel: false` if EPEL
   is configured another way, and add control-node, VPN, or office sources to
   `fail2ban_ignoreip` so administrative SSH cannot ban itself.
+- Regular-user SSH access on every node: the playbook disables password
+  authentication and prohibits root login entirely
+  (`ssh_hardening_permit_root_login: no`, keys included), so inventory must
+  connect as a non-root user with sudo. The drop-in is validated and rolled
+  back if invalid or ineffective, but that cannot undo a running daemon that
+  rejects your authentication method - set
+  `ssh_hardening_password_authentication: true` on hosts that still need
+  password logins, or raise `ssh_hardening_permit_root_login` per host if root
+  access is genuinely required.
 
 Docker manages iptables rules for published container ports, but it does not
 open `firewalld` for Swarm control and overlay traffic. When the playbook
@@ -203,6 +219,13 @@ ansible-playbook node-setup.yml --limit <first-manager> --tags portainer
 | `firewall_packages`                  | `[firewalld]`           | Packages installed when managing the firewall                                                             |
 | `firewall_allow_ssh`                 | `true`                  | Keep the `ssh` service allowed in the public zone                                                         |
 | `firewall_extra_ports`               | `9443/tcp`              | Additional published ports                                                                                |
+| `ssh_hardening_manage`               | `true`                  | Render the sshd hardening drop-in; set `false` to leave sshd untouched                                    |
+| `ssh_hardening_config_path`          | `/etc/ssh/sshd_config`   | Target file; the hardening block is inserted at the top                                |
+| `ssh_hardening_password_authentication` | `false`               | Allow password logins; set `true` on hosts without key access                                             |
+| `ssh_hardening_permit_root_login`    | `no`                    | Root login disabled entirely (keys included); inventory needs a regular sudo user                        |
+| `ssh_hardening_max_auth_tries`       | `3`                     | Authentication attempts per connection before disconnect                                                   |
+| `ssh_hardening_client_alive_interval` | `300`                  | Idle-session probe interval; with the count, drops dead sessions after 10 minutes                          |
+| `ssh_hardening_extra_options`        | `{}`                    | Additional directive/value pairs appended to the drop-in                                                  |
 | `fail2ban_manage`                    | `true`                  | Install and configure fail2ban; set `false` through the role's `when` in the playbook                     |
 | `fail2ban_install_epel`              | `true`                  | Download the EPEL release package when fail2ban is missing                                                |
 | `fail2ban_epel_url`                  | Fedora latest-N rpm     | Source of the EPEL release package                                                                        |
@@ -240,6 +263,8 @@ On a provisioned node, run the Docker commands with `sudo` or as a user in the
 swapon --show
 sysctl vm.swappiness
 grep -w swap /etc/fstab
+sudo sshd -t
+sudo sshd -T | grep -E '^(passwordauthentication|permitrootlogin|maxauthtries)'
 sudo docker version
 sudo docker info
 firewall-cmd --state

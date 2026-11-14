@@ -1,0 +1,117 @@
+---
+- name: Harden the ssh daemon configuration
+  block:
+    - name: Remove the superseded sshd drop-in
+      ansible.builtin.file:
+        path: "{{ ssh_hardening_legacy_dropin_path }}"
+        state: absent
+      when: ssh_hardening_legacy_dropin_path | default('') | length > 0
+
+    - name: Render the hardening block at the top of the main sshd_config
+      ansible.builtin.blockinfile:
+        path: "{{ ssh_hardening_config_path }}"
+        insertbefore: BOF
+        marker: "# {mark} ANSIBLE MANAGED SSH HARDENING"
+        content: "{{ lookup('template', 'sshd-hardening.conf.j2') }}"
+        validate: sshd -t -f %s
+      register: ssh_hardening_block
+      notify: Reload sshd
+
+    - name: Apply pending sshd reloads before verification
+      ansible.builtin.meta: flush_handlers
+
+    - name: Read the effective sshd configuration
+      ansible.builtin.command:
+        argv:
+          - sshd
+          - -T
+      register: ssh_hardening_effective
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Locate every source of the hardened sshd directives
+      ansible.builtin.command:
+        argv:
+          - grep
+          - -rHn
+          - -iE
+          - "^(PasswordAuthentication|PubkeyAuthentication|PermitRootLogin|MaxAuthTries|X11Forwarding|ClientAliveInterval|ClientAliveCountMax)[[:space:]]"
+          - "{{ ssh_hardening_config_path }}"
+          - "{{ ssh_hardening_config_path | dirname }}/sshd_config.d"
+      register: ssh_hardening_sources
+      changed_when: false
+      failed_when: false
+      when: not ansible_check_mode
+
+    - name: Assert the effective sshd settings match the hardening policy
+      ansible.builtin.assert:
+        that:
+          - ssh_hardening_expected_password in ssh_hardening_effective.stdout_lines
+          - ssh_hardening_expected_pubkey in ssh_hardening_effective.stdout_lines
+          - ssh_hardening_expected_max_auth in ssh_hardening_effective.stdout_lines
+          - ssh_hardening_expected_x11 in ssh_hardening_effective.stdout_lines
+          - ssh_hardening_expected_alive in ssh_hardening_effective.stdout_lines
+          - ssh_hardening_expected_count in ssh_hardening_effective.stdout_lines
+          - ssh_hardening_permit_root_effective in ssh_hardening_permit_root_allowed
+        fail_msg: >-
+          sshd -T does not show the hardened values, so another config source
+          obtains them first. Every source of these directives:
+          {{ ssh_hardening_sources.stdout_lines | default([], true)
+             or ['<none found in main config or sshd_config.d>'] }}.
+      vars:
+        ssh_hardening_expected_password: >-
+          passwordauthentication {{ ssh_hardening_password_authentication | ternary('yes', 'no') }}
+        ssh_hardening_expected_pubkey: >-
+          pubkeyauthentication {{ ssh_hardening_pubkey_authentication | ternary('yes', 'no') }}
+        ssh_hardening_expected_max_auth: "maxauthtries {{ ssh_hardening_max_auth_tries }}"
+        ssh_hardening_expected_x11: >-
+          x11forwarding {{ ssh_hardening_x11_forwarding | ternary('yes', 'no') }}
+        ssh_hardening_expected_alive: "clientaliveinterval {{ ssh_hardening_client_alive_interval }}"
+        ssh_hardening_expected_count: "clientalivecountmax {{ ssh_hardening_client_alive_count_max }}"
+        ssh_hardening_permit_root_line: >-
+          {{ ssh_hardening_effective.stdout_lines
+             | select('match', '^permitrootlogin ')
+             | first | default('permitrootlogin none') }}
+        ssh_hardening_permit_root_effective: >-
+          {{ ssh_hardening_permit_root_line | split(' ') | last }}
+        ssh_hardening_permit_root_allowed: >-
+          {{ [ssh_hardening_permit_root_login]
+             + (['without-password']
+                if ssh_hardening_permit_root_login == 'prohibit-password'
+                else []) }}
+      when: not ansible_check_mode
+  rescue:
+    - name: Remove the hardening block
+      ansible.builtin.blockinfile:
+        path: "{{ ssh_hardening_config_path }}"
+        marker: "# {mark} ANSIBLE MANAGED SSH HARDENING"
+        state: absent
+      when:
+        - ssh_hardening_block is defined
+        - ssh_hardening_block is changed
+
+    - name: Re-validate the sshd configuration after rollback
+      ansible.builtin.command:
+        argv:
+          - sshd
+          - -t
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Reload sshd after rollback
+      ansible.builtin.systemd_service:
+        name: sshd
+        state: reloaded
+      when:
+        - not ansible_check_mode
+        - ssh_hardening_block is defined
+        - ssh_hardening_block is changed
+
+    - name: Report the SSH hardening failure
+      ansible.builtin.fail:
+        msg: >-
+          SSH hardening was not applied and this run's changes were rolled
+          back, so a reboot will not lock out SSH. Fix the ssh_hardening_*
+          settings or the main sshd_config and rerun. Error:
+          {{ ansible_failed_result.stderr
+             | default(ansible_failed_result.msg | default('unknown error'), true) }}
