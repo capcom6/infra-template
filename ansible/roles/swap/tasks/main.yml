@@ -21,6 +21,11 @@
     argv: "{{ swap_file_create_command }}"
     creates: "{{ swap_file_path }}"
 
+- name: Check whether the swap file exists
+  ansible.builtin.stat:
+    path: "{{ swap_file_path }}"
+  register: swap_file_stat
+
 - name: Set swap file permissions
   ansible.builtin.file:
     path: "{{ swap_file_path }}"
@@ -28,6 +33,7 @@
     owner: root
     group: root
     mode: "0600"
+  when: not (ansible_check_mode and not swap_file_stat.stat.exists)
 
 - name: Read the swap file format
   ansible.builtin.command:

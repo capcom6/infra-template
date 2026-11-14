@@ -23,6 +23,7 @@
         name: firewalld
         state: started
         enabled: true
+      when: not (ansible_check_mode and firewall_service_check.stdout | trim != "active")
 
     - name: Wait until the firewalld API is ready
       ansible.builtin.command:
