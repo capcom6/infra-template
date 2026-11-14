@@ -275,7 +275,7 @@ swapon --show
 sysctl vm.swappiness
 grep -w swap /etc/fstab
 sudo sshd -t
-sudo sshd -T | grep -E '^(passwordauthentication|permitrootlogin|maxauthtries)'
+sudo sshd -T | grep -E '^(passwordauthentication|kbdinteractiveauthentication|permitrootlogin|maxauthtries)'
 sudo docker version
 sudo docker info
 firewall-cmd --state

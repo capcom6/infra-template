@@ -35,7 +35,7 @@
           - grep
           - -rHn
           - -iE
-          - "^(PasswordAuthentication|PubkeyAuthentication|PermitRootLogin|MaxAuthTries|X11Forwarding|ClientAliveInterval|ClientAliveCountMax)[[:space:]]"
+          - "^(PasswordAuthentication|PubkeyAuthentication|PermitRootLogin|MaxAuthTries|X11Forwarding|ClientAliveInterval|ClientAliveCountMax|KbdInteractiveAuthentication)[[:space:]]"
           - "{{ ssh_hardening_config_path }}"
           - "{{ ssh_hardening_config_path | dirname }}/sshd_config.d"
       register: ssh_hardening_sources
@@ -80,6 +80,23 @@
                 if ssh_hardening_permit_root_login == 'prohibit-password'
                 else []) }}
       when: not ansible_check_mode
+
+    - name: Assert keyboard-interactive access follows the password policy
+      ansible.builtin.assert:
+        that:
+          - ssh_hardening_expected_kbd in ssh_hardening_effective.stdout_lines
+        fail_msg: >-
+          KbdInteractiveAuthentication is not disabled in the effective
+          configuration although password authentication is turned off, so a
+          password-based PAM stack could still accept passwords. Every source
+          of these directives:
+          {{ ssh_hardening_sources.stdout_lines | default([], true)
+             or ['<none found in main config or sshd_config.d>'] }}.
+      vars:
+        ssh_hardening_expected_kbd: "kbdinteractiveauthentication no"
+      when:
+        - not ansible_check_mode
+        - not ssh_hardening_password_authentication
   rescue:
     - name: Remove the hardening block
       ansible.builtin.blockinfile:

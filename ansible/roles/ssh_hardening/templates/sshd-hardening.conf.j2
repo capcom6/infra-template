@@ -5,6 +5,9 @@
 # occurrence of these directives in the configuration.
 
 PasswordAuthentication {{ ssh_hardening_password_authentication | ternary('yes', 'no') }}
+{% if not ssh_hardening_password_authentication %}
+KbdInteractiveAuthentication no
+{% endif %}
 PubkeyAuthentication {{ ssh_hardening_pubkey_authentication | ternary('yes', 'no') }}
 PermitRootLogin {{ ssh_hardening_permit_root_login }}
 MaxAuthTries {{ ssh_hardening_max_auth_tries }}
