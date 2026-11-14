@@ -10,10 +10,37 @@
   failed_when: false
   check_mode: false
 
+- name: Install and start firewalld
+  when: firewall_manage | bool
+  block:
+    - name: Install the firewalld package
+      ansible.builtin.dnf:
+        name: "{{ firewall_packages }}"
+        state: present
+
+    - name: Enable and start firewalld
+      ansible.builtin.systemd_service:
+        name: firewalld
+        state: started
+        enabled: true
+
+    - name: Wait until the firewalld API is ready
+      ansible.builtin.command:
+        argv:
+          - firewall-cmd
+          - --state
+      register: firewall_api_wait
+      until: firewall_api_wait.stdout | trim == "running"
+      retries: 10
+      delay: 2
+      changed_when: false
+      check_mode: false
+      when: not ansible_check_mode
+
 - name: Configure firewalld zones for Swarm traffic
   when:
     - firewall_manage | bool
-    - firewall_service_check.stdout | trim == "active"
+    - not (ansible_check_mode and firewall_service_check.stdout | trim != "active")
   block:
     - name: Require the private Swarm interface
       ansible.builtin.assert:
@@ -22,6 +49,15 @@
         fail_msg: >-
           Set firewall_swarm_interface to this node's private-network interface
           before managing Swarm ports in firewalld.
+
+    - name: Allow SSH in the public zone
+      ansible.posix.firewalld:
+        service: ssh
+        zone: "{{ firewall_public_zone }}"
+        permanent: true
+        immediate: true
+        state: enabled
+      when: firewall_allow_ssh | bool
 
     - name: Assign the private interface to the Swarm zone
       ansible.posix.firewalld:
@@ -49,6 +85,17 @@
         state: enabled
       loop: "{{ firewall_extra_ports }}"
 
+- name: Recheck firewalld state
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - firewalld
+  register: firewall_service_final
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
 - name: Warn when firewalld is active but unmanaged
   ansible.builtin.debug:
     msg: >-
@@ -58,14 +105,14 @@
       configured in the appropriate public zone.
   when:
     - not (firewall_manage | bool)
-    - firewall_service_check.stdout | trim == "active"
+    - firewall_service_final.stdout | trim == "active"
 
 - name: Warn when firewalld protection is not applied
   ansible.builtin.debug:
     msg: >-
       firewalld is not active (status:
-      '{{ firewall_service_check.stdout | trim }}'). This playbook did not apply
+      '{{ firewall_service_final.stdout | trim }}'). This playbook did not apply
       firewall rules. Restrict Swarm ports
       {{ firewall_swarm_ports | join(', ') }} to the private network outside
       this playbook.
-  when: firewall_service_check.stdout | trim != "active"
+  when: firewall_service_final.stdout | trim != "active"

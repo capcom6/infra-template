@@ -26,12 +26,20 @@
       when: swarm_role | default('') in ['join_manager', 'join_worker']
 
   roles:
+    - role: swap
+      when: swap_manage | default(true) | bool
+      tags:
+        - swap
     - role: docker_engine
       tags:
         - docker
     - role: firewall
       tags:
         - firewall
+    - role: fail2ban
+      when: fail2ban_manage | default(true) | bool
+      tags:
+        - fail2ban
     - role: swarm
       tags:
         - swarm

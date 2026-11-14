@@ -1,0 +1,74 @@
+---
+- name: Check whether the fail2ban packages are installed
+  ansible.builtin.command:
+    argv: "{{ ['rpm', '-q'] + fail2ban_packages }}"
+  register: fail2ban_package_check
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Download the EPEL release package
+  ansible.builtin.get_url:
+    url: "{{ fail2ban_epel_url }}"
+    dest: "{{ fail2ban_epel_rpm_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - fail2ban_package_check.rc != 0
+    - fail2ban_install_epel | bool
+
+- name: Import the EPEL signing key
+  ansible.builtin.rpm_key:
+    key: "{{ fail2ban_epel_gpg_key_url }}"
+    state: present
+  when:
+    - fail2ban_package_check.rc != 0
+    - fail2ban_install_epel | bool
+
+- name: Install the EPEL release package
+  ansible.builtin.dnf:
+    name: "{{ fail2ban_epel_rpm_path }}"
+    state: present
+  when:
+    - fail2ban_package_check.rc != 0
+    - fail2ban_install_epel | bool
+
+- name: Install fail2ban
+  ansible.builtin.dnf:
+    name: "{{ fail2ban_packages }}"
+    state: present
+    update_cache: true
+  when: fail2ban_package_check.rc != 0
+
+- name: Configure the fail2ban jails
+  ansible.builtin.template:
+    src: jail.local.j2
+    dest: "{{ fail2ban_jail_local_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart fail2ban
+
+- name: Enable and start fail2ban
+  ansible.builtin.systemd_service:
+    name: fail2ban
+    state: started
+    enabled: true
+
+- name: Apply pending fail2ban restarts before verification
+  ansible.builtin.meta: flush_handlers
+
+- name: Verify the fail2ban sshd jail is running
+  ansible.builtin.command:
+    argv:
+      - fail2ban-client
+      - status
+      - sshd
+  register: fail2ban_sshd_status
+  until: fail2ban_sshd_status.rc == 0
+  retries: 6
+  delay: 3
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode

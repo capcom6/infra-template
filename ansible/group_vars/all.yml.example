@@ -2,6 +2,14 @@
 # Copy this file to all.yml before running the playbook.
 # all.yml is ignored by git.
 
+# Swap file created before any package install so dnf does not get OOM-killed
+# on low-memory nodes (rc 137 / "No start of json char found"). Set
+# swap_manage: false per host to opt out; changing swap_file_size does not
+# resize an existing file.
+swap_manage: true
+swap_file_size: 2G
+swap_swappiness: 10
+
 # Remove packages that conflict with Docker CE on a fresh RHEL-family node.
 # This is destructive: keep the package list explicit and review it first.
 docker_engine_remove_conflicts: true
@@ -34,7 +42,8 @@ swarm_advertise_addr: "{{ ansible_default_ipv4.address | default(ansible_host) }
 swarm_label_delegate: node1
 
 # Configure firewalld only when it is active. Set to false if the firewall is
-# managed outside this playbook.
+# managed outside this playbook. When true, firewalld is installed, started,
+# and kept enabled.
 firewall_manage: true
 
 # Set this to the private-network interface on each Swarm node. Swarm ports are
@@ -42,6 +51,20 @@ firewall_manage: true
 # remain in the public zone. Override per host in inventory if interface names
 # differ.
 firewall_swarm_interface: ""
+
+# SSH brute-force protection with fail2ban. fail2ban ships in EPEL; the
+# playbook downloads the EPEL release package from Fedora when fail2ban is not
+# installed yet (set fail2ban_install_epel: false to use a mirror you trust).
+fail2ban_install_epel: true
+
+# Sources exempt from banning. Add your control-node, VPN, or office addresses
+# so administrative SSH sessions cannot lock themselves out.
+fail2ban_ignoreip: "127.0.0.1/8 ::1"
+
+# Thresholds for the sshd jail.
+fail2ban_bantime: 10m
+fail2ban_findtime: 10m
+fail2ban_maxretry: 5
 
 # Deploy or update the Portainer stack from the first manager in the inventory.
 # Set true only after restricting access to Portainer's 9443/tcp endpoint; the

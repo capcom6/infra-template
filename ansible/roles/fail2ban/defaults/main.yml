@@ -1,0 +1,37 @@
+---
+fail2ban_manage: true
+
+# fail2ban is not in the base RHEL-family repositories; it ships in EPEL. The
+# EPEL release package is downloaded from Fedora so the playbook does not
+# depend on per-distribution extras repositories. Override fail2ban_epel_url
+# for air-gapped hosts or mirrors.
+fail2ban_install_epel: true
+fail2ban_epel_url: "https://dl.fedoraproject.org/pub/epel/epel-release-latest-{{ ansible_distribution_major_version }}.noarch.rpm"
+fail2ban_epel_rpm_path: /tmp/epel-release-latest.noarch.rpm
+
+# The epel-release rpm is signed with the EPEL signing key, which is not yet
+# trusted on a fresh host; import it before installing the release package.
+# The same key signs the EPEL repository packages pulled afterwards.
+fail2ban_epel_gpg_key_url: "https://dl.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-{{ ansible_distribution_major_version }}"
+
+# python3-systemd provides the journald backend used by the sshd jail.
+fail2ban_packages:
+  - fail2ban
+  - python3-systemd
+
+fail2ban_jail_local_path: /etc/fail2ban/jail.local
+
+fail2ban_bantime: 10m
+fail2ban_findtime: 10m
+fail2ban_maxretry: 5
+
+# firewallcmd-* actions keep bans inside firewalld, which the firewall role
+# manages. Switch to iptables-multiport only on nodes without firewalld.
+fail2ban_banaction: firewallcmd-multiport
+
+# Numeric so the firewalld direct rule never depends on service-name lookup.
+fail2ban_ssh_port: 22
+
+# Sources exempt from banning. Add control-node, VPN, or office addresses so
+# administrative SSH cannot lock itself out.
+fail2ban_ignoreip: "127.0.0.1/8 ::1"

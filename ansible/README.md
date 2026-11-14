@@ -3,11 +3,14 @@
 Provisions a new Linux node for the Docker Swarm infrastructure in this
 repository:
 
+- creates a swap file first (default 2G, `vm.swappiness=10`) so package
+  installs do not get OOM-killed on low-memory nodes
 - installs Docker CE on a supported RHEL-family distribution
 - initializes a new Swarm or joins an existing one
 - applies Swarm node labels
-- restricts Swarm ports to a configured private interface and opens published
-  ports separately in `firewalld` when it is active
+- installs, enables, and configures `firewalld`, restricting Swarm ports to a
+  configured private interface and opening published ports separately
+- installs `fail2ban` from EPEL with an `sshd` jail that bans through firewalld
 - optionally deploys or updates the existing
   [compose.portainer.yml](../compose.portainer.yml) when `portainer_deploy` is
   true
@@ -29,18 +32,26 @@ untouched. If the rendered file differs, Docker is restarted.
 - AlmaLinux/RHEL/Rocky/CentOS 8, 9, or 10. Docker CE repository support must be
   verified before extending `docker_engine_supported_major_versions`.
 - A private-network interface shared by the Swarm nodes. When `firewall_manage`
-  is true, set `firewall_swarm_interface` to that interface on each node; if
-  `firewalld` is active, the playbook assigns it to the `internal` zone and opens
-  `2377/tcp`, `7946/tcp`, `7946/udp`, and `4789/udp` there. Portainer's
-  `9443/tcp` is opened separately in the `public` zone. Add `80/tcp` and
-  `443/tcp` to `firewall_extra_ports` when Traefik runs on the node.
+  is true (the default), the playbook installs, starts, and enables `firewalld`;
+  set `firewall_swarm_interface` to that interface on each node and the playbook
+  assigns it to the `internal` zone and opens `2377/tcp`, `7946/tcp`,
+  `7946/udp`, and `4789/udp` there. Portainer's `9443/tcp` is opened separately
+  in the `public` zone, and the `ssh` service stays allowed in `public` so a
+  standard sshd remains reachable after firewalld starts; add any non-standard
+  sshd port to `firewall_extra_ports` as well. Add `80/tcp` and `443/tcp` to
+  `firewall_extra_ports` when Traefik runs on the node.
+- Outbound HTTPS access to `dl.fedoraproject.org` for the first provisioning
+  run: `fail2ban` is not in the base repositories, so the playbook downloads the
+  EPEL release package from Fedora. Set `fail2ban_install_epel: false` if EPEL
+  is configured another way, and add control-node, VPN, or office sources to
+  `fail2ban_ignoreip` so administrative SSH cannot ban itself.
 
 Docker manages iptables rules for published container ports, but it does not
-open `firewalld` for Swarm control and overlay traffic. If `firewalld` is active,
-set `firewall_swarm_interface` to the private interface, or set
-`firewall_manage: false` to manage rules outside Ansible; then restrict Swarm
-ports to the private network and configure published-port rules externally. The
-interface binding moves that
+open `firewalld` for Swarm control and overlay traffic. When the playbook
+manages `firewalld`, set `firewall_swarm_interface` to the private interface, or
+set `firewall_manage: false` to manage rules outside Ansible; then restrict
+Swarm ports to the private network and configure published-port rules
+externally. The interface binding moves that
 interface into firewalld's `internal` zone; published ports remain in `public`.
 The `internal` zone trusts the network and applies all of that zone's default
 and locally configured rules, not just the Swarm ports listed above. Use only
@@ -170,6 +181,11 @@ ansible-playbook node-setup.yml --limit <first-manager> --tags portainer
 
 | Variable                             | Default                 | Purpose                                                                                                   |
 | ------------------------------------ | ----------------------- | --------------------------------------------------------------------------------------------------------- |
+| `swap_manage`                        | `true`                  | Create the swap file before package installs; set `false` per host to opt out                             |
+| `swap_file_path`                     | `/swapfile`             | Location of the swap file                                                                                 |
+| `swap_file_size`                     | `2G`                    | Initial size; an existing file is never resized                                                           |
+| `swap_file_create_command`           | `fallocate -l ...`      | Command used to create the file; override where fallocate is unsuitable (e.g. btrfs)                      |
+| `swap_swappiness`                    | `10`                    | Kernel `vm.swappiness` written to `/etc/sysctl.d/99-swap.conf`                                             |
 | `swarm_role`                         | none                    | `init`, `join_manager`, or `join_worker`                                                                  |
 | `swarm_manager_addr`                 | none                    | Existing manager host for joins                                                                           |
 | `swarm_join_token`                   | none                    | Manager or worker join token, supplied externally                                                         |
@@ -180,11 +196,23 @@ ansible-playbook node-setup.yml --limit <first-manager> --tags portainer
 | `docker_engine_conflict_packages`    | podman/buildah/runc set | Explicit package list for conflict removal                                                                |
 | `docker_engine_manage_daemon_config` | `true`                  | Render and replace `/etc/docker/daemon.json`; set `false` to leave it untouched                           |
 | `docker_engine_daemon_options`       | `log-driver: journald`  | Docker daemon JSON options                                                                                |
-| `firewall_manage`                    | `true`                  | Configure active `firewalld`; set `false` to manage rules outside Ansible                                 |
+| `firewall_manage`                    | `true`                  | Install, start, and configure `firewalld`; set `false` to manage rules outside Ansible                     |
 | `firewall_swarm_interface`           | empty                   | Private interface assigned to the `internal` zone                                                         |
 | `firewall_swarm_zone`                | `internal`              | Zone for Swarm-only ports                                                                                 |
 | `firewall_public_zone`               | `public`                | Zone for published ports                                                                                  |
+| `firewall_packages`                  | `[firewalld]`           | Packages installed when managing the firewall                                                             |
+| `firewall_allow_ssh`                 | `true`                  | Keep the `ssh` service allowed in the public zone                                                         |
 | `firewall_extra_ports`               | `9443/tcp`              | Additional published ports                                                                                |
+| `fail2ban_manage`                    | `true`                  | Install and configure fail2ban; set `false` through the role's `when` in the playbook                     |
+| `fail2ban_install_epel`              | `true`                  | Download the EPEL release package when fail2ban is missing                                                |
+| `fail2ban_epel_url`                  | Fedora latest-N rpm     | Source of the EPEL release package                                                                        |
+| `fail2ban_epel_gpg_key_url`          | Fedora EPEL key         | Signing key imported before the release package is installed                                              |
+| `fail2ban_bantime`                   | `10m`                   | Ban duration for the sshd jail                                                                            |
+| `fail2ban_findtime`                  | `10m`                   | Window in which failures count                                                                            |
+| `fail2ban_maxretry`                  | `5`                     | Failures before a ban                                                                                     |
+| `fail2ban_banaction`                 | `firewallcmd-multiport` | How bans are applied (firewalld direct rules)                                                             |
+| `fail2ban_ssh_port`                  | `22`                    | Port watched by the sshd jail                                                                             |
+| `fail2ban_ignoreip`                  | localhost ranges        | Sources exempt from banning                                                                               |
 | `portainer_deploy`                   | `false`                 | Deploy or update Portainer                                                                                |
 | `portainer_stack_name`               | `portainer`             | Docker stack name                                                                                         |
 
@@ -209,12 +237,23 @@ On a provisioned node, run the Docker commands with `sudo` or as a user in the
 `docker` group so the Docker socket is accessible:
 
 ```bash
+swapon --show
+sysctl vm.swappiness
+grep -w swap /etc/fstab
 sudo docker version
 sudo docker info
+firewall-cmd --state
 firewall-cmd --get-active-zones
 firewall-cmd --zone=internal --list-ports
 firewall-cmd --zone=public --list-ports
+systemctl is-enabled firewalld fail2ban
+sudo fail2ban-client status
+sudo fail2ban-client status sshd
 ```
+
+`fail2ban-client status sshd` shows the jail's current failures and banned
+addresses; if it reports that the jail does not exist, inspect
+`journalctl -u fail2ban` for backend or filter errors.
 
 Cluster commands must run on a manager; they fail on workers:
 

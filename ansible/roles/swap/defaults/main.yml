@@ -1,0 +1,20 @@
+---
+swap_manage: true
+
+# Created before any package install so dnf and other tools do not get
+# OOM-killed on low-memory nodes. Changing swap_file_size later does not resize
+# an existing file; swap it off and remove it manually to recreate.
+swap_file_path: /swapfile
+swap_file_size: 2G
+
+# Override for filesystems where fallocate is unsuitable (for example btrfs,
+# which needs a NOCOW-aware creation sequence instead).
+swap_file_create_command:
+  - fallocate
+  - -l
+  - "{{ swap_file_size }}"
+  - "{{ swap_file_path }}"
+
+# Keep memory in RAM until it is really needed; the kernel default of 60
+# swaps too eagerly for server workloads.
+swap_swappiness: 10
