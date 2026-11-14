@@ -1,0 +1,22 @@
+# Managed by Ansible - hardening overrides for the OpenSSH server.
+# This block is inserted at the top of the main sshd_config, before the
+# sshd_config.d Include, so sshd obtains these values first and they win over
+# every drop-in (for example RHEL's stock 50-redhat.conf) and over any other
+# occurrence of these directives in the configuration.
+
+PasswordAuthentication {{ ssh_hardening_password_authentication | ternary('yes', 'no') }}
+{% if not ssh_hardening_password_authentication %}
+KbdInteractiveAuthentication no
+{% endif %}
+PubkeyAuthentication {{ ssh_hardening_pubkey_authentication | ternary('yes', 'no') }}
+PermitRootLogin {{ ssh_hardening_permit_root_login }}
+MaxAuthTries {{ ssh_hardening_max_auth_tries }}
+X11Forwarding {{ ssh_hardening_x11_forwarding | ternary('yes', 'no') }}
+ClientAliveInterval {{ ssh_hardening_client_alive_interval }}
+ClientAliveCountMax {{ ssh_hardening_client_alive_count_max }}
+{% if ssh_hardening_extra_options | length > 0 %}
+
+{% for directive, value in ssh_hardening_extra_options.items() %}
+{{ directive }} {{ value }}
+{% endfor %}
+{% endif %}

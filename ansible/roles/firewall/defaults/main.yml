@@ -1,0 +1,28 @@
+---
+firewall_manage: true
+firewall_swarm_zone: internal
+firewall_public_zone: public
+# Private-network interface assigned to the Swarm zone together with the
+# Swarm ports. Leave empty on single-node clusters: Swarm ports then stay
+# local-only (firewalld accepts loopback traffic unconditionally) and are not
+# opened on any interface. Join roles require an interface here.
+firewall_swarm_interface: ""
+
+# Installed and kept running when firewall_manage is true.
+firewall_packages:
+  - firewalld
+
+# Keep the ssh service reachable in the public zone after firewalld starts. If
+# sshd listens on a non-standard port, add that port to firewall_extra_ports.
+firewall_allow_ssh: true
+
+firewall_swarm_ports:
+  - 2377/tcp
+  - 7946/tcp
+  - 7946/udp
+  - 4789/udp
+
+# Portainer is published directly on 9443. Add 80/tcp and 443/tcp here only when
+# Traefik runs on this node.
+firewall_extra_ports:
+  - 9443/tcp

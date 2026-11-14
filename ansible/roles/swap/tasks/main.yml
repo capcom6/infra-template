@@ -1,0 +1,85 @@
+---
+- name: Read active swap devices
+  ansible.builtin.command:
+    argv:
+      - swapon
+      - --show=NAME
+      - --noheadings
+  register: swap_active_devices
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Determine whether the swap file is active
+  ansible.builtin.set_fact:
+    swap_file_active: >-
+      {{ swap_file_path in
+         (swap_active_devices.stdout_lines | map('trim') | list) }}
+
+- name: Create the swap file
+  ansible.builtin.command:
+    argv: "{{ swap_file_create_command }}"
+    creates: "{{ swap_file_path }}"
+
+- name: Check whether the swap file exists
+  ansible.builtin.stat:
+    path: "{{ swap_file_path }}"
+  register: swap_file_stat
+
+- name: Set swap file permissions
+  ansible.builtin.file:
+    path: "{{ swap_file_path }}"
+    state: file
+    owner: root
+    group: root
+    mode: "0600"
+  when: not (ansible_check_mode and not swap_file_stat.stat.exists)
+
+- name: Read the swap file format
+  ansible.builtin.command:
+    argv:
+      - blkid
+      - -p
+      - -o
+      - value
+      - -s
+      - TYPE
+      - "{{ swap_file_path }}"
+  register: swap_file_type
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: not swap_file_active
+
+- name: Format the swap file
+  ansible.builtin.command:
+    argv:
+      - mkswap
+      - "{{ swap_file_path }}"
+  changed_when: true
+  when:
+    - not swap_file_active
+    - swap_file_type.stdout | default('') | trim != "swap"
+
+- name: Activate the swap file
+  ansible.builtin.command:
+    argv:
+      - swapon
+      - "{{ swap_file_path }}"
+  changed_when: true
+  when: not swap_file_active
+
+- name: Persist the swap file in fstab
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: '^{{ swap_file_path | regex_escape }}\s'
+    line: "{{ swap_file_path }} none swap sw 0 0"
+    state: present
+
+- name: Set the kernel swappiness
+  ansible.posix.sysctl:
+    name: vm.swappiness
+    value: "{{ swap_swappiness | string }}"
+    state: present
+    reload: true
+    sysctl_file: /etc/sysctl.d/99-swap.conf

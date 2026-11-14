@@ -1,0 +1,34 @@
+---
+ssh_hardening_manage: true
+
+# Hardening block inserted at the TOP of the main sshd_config, before the
+# sshd_config.d Include, so sshd's first-obtained-value rule gives these
+# settings precedence over every drop-in (including RHEL's stock
+# 50-redhat.conf, which sets X11Forwarding yes) and over any other occurrence
+# in the configuration. Validated with sshd -t before it lands, reloaded,
+# verified via sshd -T, and rolled back automatically on any failure.
+ssh_hardening_config_path: /etc/ssh/sshd_config
+
+# Drop-in written by earlier revisions of this role; it loses first-value-wins
+# ordering against stock drop-ins, so it is removed. Set empty to keep it.
+ssh_hardening_legacy_dropin_path: /etc/ssh/sshd_config.d/60-ansible-hardening.conf
+
+# Key-based access only. Set to true on hosts that still need password logins:
+# validation rolls the file back, but it cannot undo a running daemon that
+# rejects your authentication method.
+ssh_hardening_password_authentication: false
+
+# Root login is prohibited entirely, over SSH keys as well. Inventory must
+# connect as a regular user with sudo (quoted so YAML keeps it a string).
+ssh_hardening_permit_root_login: "no"
+ssh_hardening_pubkey_authentication: true
+
+ssh_hardening_max_auth_tries: 3
+ssh_hardening_x11_forwarding: false
+
+# Drop idle sessions after interval * count seconds; 0 disables the check.
+ssh_hardening_client_alive_interval: 300
+ssh_hardening_client_alive_count_max: 2
+
+# Extra directives appended to the drop-in (directive: value).
+ssh_hardening_extra_options: {}

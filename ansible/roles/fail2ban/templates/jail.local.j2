@@ -1,0 +1,17 @@
+# Managed by Ansible. Local overrides for fail2ban; unset keys fall back to
+# the packaged jail.conf defaults.
+
+[DEFAULT]
+bantime = {{ fail2ban_bantime }}
+findtime = {{ fail2ban_findtime }}
+maxretry = {{ fail2ban_maxretry }}
+banaction = {{ fail2ban_banaction }}
+{% if fail2ban_ignoreip | trim | length > 0 %}
+ignoreip = {{ fail2ban_ignoreip }}
+{% endif %}
+
+[sshd]
+enabled = true
+filter = sshd
+backend = systemd
+port = {{ fail2ban_ssh_port }}

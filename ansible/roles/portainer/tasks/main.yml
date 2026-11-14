@@ -1,0 +1,133 @@
+---
+- name: Read Docker Swarm state
+  ansible.builtin.command:
+    argv:
+      - docker
+      - info
+      - --format
+      - "{% raw %}{{json .Swarm}}{% endraw %}"
+  register: portainer_swarm_info_raw
+  changed_when: false
+  check_mode: false
+
+- name: Parse Docker Swarm state
+  ansible.builtin.set_fact:
+    portainer_swarm_info: "{{ (portainer_swarm_info_raw.stdout | from_json) or {} }}"
+
+- name: Require an active Swarm manager
+  ansible.builtin.assert:
+    that:
+      - portainer_swarm_info.LocalNodeState | default('unknown') == "active"
+      - portainer_swarm_info.ControlAvailable | default(false) | bool
+    fail_msg: >-
+      Portainer must be deployed from an active Swarm manager. Current state:
+      {{ portainer_swarm_info.LocalNodeState | default('unknown') }}, manager:
+      {{ portainer_swarm_info.ControlAvailable | default(false) }}.
+
+- name: Check the Portainer compose source
+  ansible.builtin.stat:
+    path: "{{ portainer_compose_source }}"
+  delegate_to: localhost
+  become: false
+  register: portainer_compose_source_stat
+  check_mode: false
+
+- name: Require the existing Portainer compose file
+  ansible.builtin.assert:
+    that:
+      - portainer_compose_source_stat.stat.exists
+      - portainer_compose_source_stat.stat.isreg
+    fail_msg: >-
+      Portainer compose file not found at
+      {{ portainer_compose_source }}. Run the playbook from the repository
+      checkout or set portainer_compose_source.
+
+- name: Get the Swarm node ID
+  ansible.builtin.command:
+    argv:
+      - docker
+      - info
+      - --format
+      - "{% raw %}{{.Swarm.NodeID}}{% endraw %}"
+  register: portainer_node_id
+  changed_when: false
+  check_mode: false
+
+- name: Read the current manager labels
+  ansible.builtin.command:
+    argv:
+      - docker
+      - node
+      - inspect
+      - --format
+      - "{% raw %}{{json .Spec.Labels}}{% endraw %}"
+      - "{{ portainer_node_id.stdout | trim }}"
+  register: portainer_labels_raw
+  changed_when: false
+  check_mode: false
+
+- name: Parse the current manager labels
+  ansible.builtin.set_fact:
+    portainer_labels: "{{ (portainer_labels_raw.stdout | from_json) or {} }}"
+
+- name: Ensure the Portainer placement label
+  ansible.builtin.command:
+    argv:
+      - docker
+      - node
+      - update
+      - --label-add
+      - portainer=true
+      - "{{ portainer_node_id.stdout | trim }}"
+  changed_when: true
+  when: (portainer_labels.portainer | default('')) | string != "true"
+
+- name: Ensure the Portainer install directory exists
+  ansible.builtin.file:
+    path: "{{ portainer_install_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Copy the Portainer compose file
+  ansible.builtin.copy:
+    src: "{{ portainer_compose_source }}"
+    dest: "{{ portainer_install_dir }}/compose.portainer.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Deploy the Portainer stack
+  ansible.builtin.command:
+    argv:
+      - docker
+      - stack
+      - deploy
+      - -c
+      - "{{ portainer_install_dir }}/compose.portainer.yml"
+      - "{{ portainer_stack_name }}"
+  register: portainer_stack_deploy
+  changed_when: >-
+    ('Creating' in portainer_stack_deploy.stdout)
+    or ('Updating' in portainer_stack_deploy.stdout)
+    or ('Creating' in portainer_stack_deploy.stderr)
+    or ('Updating' in portainer_stack_deploy.stderr)
+
+- name: Wait for the Portainer service to converge
+  ansible.builtin.command:
+    argv:
+      - docker
+      - service
+      - ls
+      - --filter
+      - "name={{ portainer_stack_name }}_portainer"
+      - --format
+      - "{% raw %}{{.Replicas}}{% endraw %}"
+  register: portainer_service_replicas
+  until: portainer_service_replicas.stdout | trim == "1/1"
+  retries: "{{ ((portainer_wait_timeout | int) / 5) | round(0, 'ceil') | int }}"
+  delay: 5
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode
