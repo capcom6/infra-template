@@ -9,7 +9,8 @@ repository:
 - initializes a new Swarm or joins an existing one
 - applies Swarm node labels
 - installs, enables, and configures `firewalld`, restricting Swarm ports to a
-  configured private interface and opening published ports separately
+  configured private interface (or keeping them local-only on single-node
+  clusters) and opening published ports separately
 - hardens sshd with a managed block at the top of the main `sshd_config`,
   before the `sshd_config.d` Include, so the values win sshd's
   first-obtained-value rule over every drop-in - including RHEL's stock
@@ -38,11 +39,16 @@ untouched. If the rendered file differs, Docker is restarted.
   sudo requires a password.
 - AlmaLinux/RHEL/Rocky/CentOS 8, 9, or 10. Docker CE repository support must be
   verified before extending `docker_engine_supported_major_versions`.
-- A private-network interface shared by the Swarm nodes. When `firewall_manage`
-  is true (the default), the playbook installs, starts, and enables `firewalld`;
-  set `firewall_swarm_interface` to that interface on each node and the playbook
-  assigns it to the `internal` zone and opens `2377/tcp`, `7946/tcp`,
-  `7946/udp`, and `4789/udp` there. Portainer's `9443/tcp` is opened separately
+- A private-network interface shared by the Swarm nodes **on multi-node
+  clusters**. When `firewall_manage` is true (the default), the playbook
+  installs, starts, and enables `firewalld`; set `firewall_swarm_interface` to
+  that interface on each node and the playbook assigns it to the `internal`
+  zone and opens `2377/tcp`, `7946/tcp`, `7946/udp`, and `4789/udp` there.
+  On a single-node cluster leave `firewall_swarm_interface` empty: firewalld
+  unconditionally accepts loopback traffic and a one-node cluster only talks
+  to itself, so the Swarm ports stay local-only and are not opened on any
+  interface. Join runs fail without an interface - set it before adding a
+  second node. Portainer's `9443/tcp` is opened separately
   in the `public` zone, and the `ssh` service stays allowed in `public` so a
   standard sshd remains reachable after firewalld starts; add any non-standard
   sshd port to `firewall_extra_ports` as well. Add `80/tcp` and `443/tcp` to
@@ -64,7 +70,8 @@ untouched. If the rendered file differs, Docker is restarted.
 
 Docker manages iptables rules for published container ports, but it does not
 open `firewalld` for Swarm control and overlay traffic. When the playbook
-manages `firewalld`, set `firewall_swarm_interface` to the private interface, or
+manages `firewalld` on a multi-node cluster, set `firewall_swarm_interface` to
+the private interface (leave it empty for single-node clusters), or
 set `firewall_manage: false` to manage rules outside Ansible; then restrict
 Swarm ports to the private network and configure published-port rules
 externally. The interface binding moves that
@@ -213,7 +220,7 @@ ansible-playbook node-setup.yml --limit <first-manager> --tags portainer
 | `docker_engine_manage_daemon_config` | `true`                  | Render and replace `/etc/docker/daemon.json`; set `false` to leave it untouched                           |
 | `docker_engine_daemon_options`       | `log-driver: journald`  | Docker daemon JSON options                                                                                |
 | `firewall_manage`                    | `true`                  | Install, start, and configure `firewalld`; set `false` to manage rules outside Ansible                     |
-| `firewall_swarm_interface`           | empty                   | Private interface assigned to the `internal` zone                                                         |
+| `firewall_swarm_interface`           | empty                   | Private interface assigned to the `internal` zone with the Swarm ports; empty = single-node mode, Swarm ports stay local-only |
 | `firewall_swarm_zone`                | `internal`              | Zone for Swarm-only ports                                                                                 |
 | `firewall_public_zone`               | `public`                | Zone for published ports                                                                                  |
 | `firewall_packages`                  | `[firewalld]`           | Packages installed when managing the firewall                                                             |

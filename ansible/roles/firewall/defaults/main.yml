@@ -2,6 +2,10 @@
 firewall_manage: true
 firewall_swarm_zone: internal
 firewall_public_zone: public
+# Private-network interface assigned to the Swarm zone together with the
+# Swarm ports. Leave empty on single-node clusters: Swarm ports then stay
+# local-only (firewalld accepts loopback traffic unconditionally) and are not
+# opened on any interface. Join roles require an interface here.
 firewall_swarm_interface: ""
 
 # Installed and kept running when firewall_manage is true.

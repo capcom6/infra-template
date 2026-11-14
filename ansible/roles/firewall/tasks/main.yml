@@ -42,13 +42,18 @@
     - firewall_manage | bool
     - not (ansible_check_mode and firewall_service_check.stdout | trim != "active")
   block:
-    - name: Require the private Swarm interface
+    - name: Require the private Swarm interface for multi-node clusters
       ansible.builtin.assert:
         that:
           - firewall_swarm_interface | length > 0
         fail_msg: >-
-          Set firewall_swarm_interface to this node's private-network interface
-          before managing Swarm ports in firewalld.
+          swarm_role={{ swarm_role | default('init') }} joins an existing
+          cluster, so firewall_swarm_interface must name the private-network
+          interface shared with the other nodes. Leaving it empty is supported
+          only for single-node clusters, where Swarm traffic stays on the
+          loopback interface. Set the interface, or set firewall_manage: false
+          to manage these rules outside this playbook.
+      when: swarm_role | default('init') in ['join_manager', 'join_worker']
 
     - name: Allow SSH in the public zone
       ansible.posix.firewalld:
@@ -66,6 +71,7 @@
         permanent: true
         immediate: true
         state: enabled
+      when: firewall_swarm_interface | length > 0
 
     - name: Enable Swarm ports in the private zone
       ansible.posix.firewalld:
@@ -75,6 +81,7 @@
         immediate: true
         state: enabled
       loop: "{{ firewall_swarm_ports }}"
+      when: firewall_swarm_interface | length > 0
 
     - name: Enable published ports in the public zone
       ansible.posix.firewalld:
@@ -84,6 +91,16 @@
         immediate: true
         state: enabled
       loop: "{{ firewall_extra_ports }}"
+
+    - name: Note the single-node firewall mode
+      ansible.builtin.debug:
+        msg: >-
+          firewall_swarm_interface is empty: this single-node cluster keeps
+          Swarm ports ({{ firewall_swarm_ports | join(', ') }}) local-only -
+          firewalld accepts loopback traffic unconditionally - and opens only
+          the published ports in the public zone. Set firewall_swarm_interface
+          before adding a second node.
+      when: firewall_swarm_interface | length == 0
 
 - name: Recheck firewalld state
   ansible.builtin.command:
@@ -113,6 +130,6 @@
       firewalld is not active (status:
       '{{ firewall_service_final.stdout | trim }}'). This playbook did not apply
       firewall rules. Restrict Swarm ports
-      {{ firewall_swarm_ports | join(', ') }} to the private network outside
-      this playbook.
+      {{ firewall_swarm_ports | join(', ') }} to the private network - or keep
+      them local-only on a single-node cluster - outside this playbook.
   when: firewall_service_final.stdout | trim != "active"

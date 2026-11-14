@@ -46,10 +46,11 @@ swarm_label_delegate: node1
 # and kept enabled.
 firewall_manage: true
 
-# Set this to the private-network interface on each Swarm node. Swarm ports are
-# opened only in firewalld's internal zone on this interface; published ports
-# remain in the public zone. Override per host in inventory if interface names
-# differ.
+# Private-network interface on each Swarm node (multi-node clusters). Swarm
+# ports are opened only in firewalld's internal zone on this interface;
+# published ports remain in the public zone. Leave empty for single-node
+# clusters: Swarm traffic then stays on loopback and no Swarm port is opened
+# on any interface. Override per host in inventory if interface names differ.
 firewall_swarm_interface: ""
 
 # SSH hardening block at the top of /etc/ssh/sshd_config (wins over every
