@@ -29,6 +29,17 @@
       changed_when: false
       when: not ansible_check_mode
 
+    - name: Read the effective sshd configuration for root logins
+      ansible.builtin.command:
+        argv:
+          - sshd
+          - -T
+          - -C
+          - user=root
+      register: ssh_hardening_effective_root
+      changed_when: false
+      when: not ansible_check_mode
+
     - name: Locate every source of the hardened sshd directives
       ansible.builtin.command:
         argv:
@@ -53,9 +64,12 @@
           - ssh_hardening_expected_alive in ssh_hardening_effective.stdout_lines
           - ssh_hardening_expected_count in ssh_hardening_effective.stdout_lines
           - ssh_hardening_permit_root_effective in ssh_hardening_permit_root_allowed
+          - ssh_hardening_root_permit_effective in ssh_hardening_permit_root_allowed
+          - ssh_hardening_expected_password in ssh_hardening_effective_root.stdout_lines
         fail_msg: >-
-          sshd -T does not show the hardened values, so another config source
-          obtains them first. Every source of these directives:
+          sshd -T (or its root connection context) does not show the hardened
+          values, so another config source - possibly a Match block - obtains
+          them first. Every source of these directives:
           {{ ssh_hardening_sources.stdout_lines | default([], true)
              or ['<none found in main config or sshd_config.d>'] }}.
       vars:
@@ -74,6 +88,12 @@
              | first | default('permitrootlogin none') }}
         ssh_hardening_permit_root_effective: >-
           {{ ssh_hardening_permit_root_line | split(' ') | last }}
+        ssh_hardening_root_permit_line: >-
+          {{ ssh_hardening_effective_root.stdout_lines
+             | select('match', '^permitrootlogin ')
+             | first | default('permitrootlogin none') }}
+        ssh_hardening_root_permit_effective: >-
+          {{ ssh_hardening_root_permit_line | split(' ') | last }}
         ssh_hardening_permit_root_allowed: >-
           {{ [ssh_hardening_permit_root_login]
              + (['without-password']
