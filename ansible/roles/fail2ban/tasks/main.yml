@@ -1,4 +1,29 @@
 ---
+- name: Check whether firewalld is active
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - firewalld
+  register: fail2ban_firewalld_check
+  changed_when: false
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Require an active firewalld for firewallcmd ban actions
+  ansible.builtin.assert:
+    that:
+      - not fail2ban_banaction.startswith('firewallcmd-')
+        or fail2ban_firewalld_check.stdout | trim == 'active'
+    fail_msg: >-
+      fail2ban_banaction={{ fail2ban_banaction }} applies bans through
+      firewalld, but firewalld is
+      '{{ fail2ban_firewalld_check.stdout | trim }}' on {{ inventory_hostname }}.
+      The sshd jail can report healthy while every ban fails. Activate
+      firewalld, switch fail2ban_banaction to an action that does not depend
+      on it (for example iptables-multiport), or set fail2ban_manage: false.
+  when: not ansible_check_mode
+
 - name: Check whether the fail2ban packages are installed
   ansible.builtin.command:
     argv: "{{ ['rpm', '-q'] + fail2ban_packages }}"

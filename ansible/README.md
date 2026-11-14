@@ -74,7 +74,11 @@ manages `firewalld` on a multi-node cluster, set `firewall_swarm_interface` to
 the private interface (leave it empty for single-node clusters), or
 set `firewall_manage: false` to manage rules outside Ansible; then restrict
 Swarm ports to the private network and configure published-port rules
-externally. The interface binding moves that
+externally. If external management leaves firewalld stopped, also override
+`fail2ban_banaction`: the default (`firewallcmd-multiport`) applies bans
+through firewalld, so switch to an action that does not depend on it (for
+example `iptables-multiport`) or set `fail2ban_manage: false`.
+The interface binding moves that
 interface into firewalld's `internal` zone; published ports remain in `public`.
 The `internal` zone trusts the network and applies all of that zone's default
 and locally configured rules, not just the Swarm ports listed above. Use only
